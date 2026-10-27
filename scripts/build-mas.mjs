@@ -7,7 +7,7 @@
 //   APPLE_TEAM_ID=XXXXXXXXXX MAS_PROVISIONING_PROFILE=path/to/profile.provisionprofile node scripts/build-mas.mjs
 //       Signed .pkg for App Store Connect, from the "Apple Distribution" and
 //       "Mac Installer Distribution" certificates in the keychain.
-//       Lands in release/Hearth-<version>-mas-arm64.pkg.
+//       Lands in release/mas-arm64/Hearth-<version>-mas-arm64.pkg.
 //
 // Each build is numbered with the time it was made, in UTC, like 2026.1027.1530:
 // App Store Connect takes a Mac build only when its number is higher than
@@ -95,5 +95,6 @@ if (local) {
   execFileSync('codesign', ['--verify', '--deep', '--strict', app])
   console.log(`build-mas: sandboxed store edition ready at ${app}`)
 } else {
-  console.log('build-mas: done. Upload release/Hearth-*-mas-arm64.pkg with Transporter (docs/app-store.md).')
+  const { version } = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
+  console.log(`build-mas: done. Upload ${join(dirname(app), `Hearth-${version}-mas-arm64.pkg`)} with Transporter (docs/app-store.md).`)
 }

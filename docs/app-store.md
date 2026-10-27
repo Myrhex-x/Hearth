@@ -69,7 +69,7 @@ TestFlight is the place to check both, before submitting.
 APPLE_TEAM_ID=XXXXXXXXXX MAS_PROVISIONING_PROFILE=~/Downloads/Hearth.provisionprofile npm run dist:mas
 ```
 
-This checks that both certificates are in the keychain, builds Hearth, fetches the engine for Apple silicon if needed, signs everything with the two certificates, and writes `release/Hearth-<version>-mas-arm64.pkg`. macOS may ask to let `codesign` and `productbuild` use the certificates' keys: enter the Mac's login password and click Always Allow.
+This checks that both certificates are in the keychain, builds Hearth, fetches the engine for Apple silicon if needed, signs everything with the two certificates, and writes `release/mas-arm64/Hearth-<version>-mas-arm64.pkg`. macOS may ask to let `codesign` and `productbuild` use the certificates' keys: enter the Mac's login password and click Always Allow.
 
 Upload that package with [Transporter](https://apps.apple.com/app/transporter/id1450874784): sign in, add the package, click Deliver. Once Apple has processed it, the build shows up in App Store Connect, in TestFlight and on the version page.
 
