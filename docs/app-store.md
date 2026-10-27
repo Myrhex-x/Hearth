@@ -150,5 +150,7 @@ Paste this into App Review Information, Notes. Sign-in required: no.
 ## Good to know
 
 - The store build is for Apple silicon only. An Intel build would need a universal app and a universal engine.
+- Hearth needs macOS 13.3 or later, like the engine. The App Store reads this from the app.
+- Source control counts on Xcode or the Command Line Tools being installed. If App Review objects to relying on them (guideline 2.4.5), the way out is to bundle git in this edition, or to use a git written in JavaScript.
 - Keep the bundle ID and the team: the sandbox container, and with it the downloaded models and folder permissions, belong to them.
 - On an individual developer account, the App Store shows the account holder's legal name as the seller. An organization account shows the organization's name.

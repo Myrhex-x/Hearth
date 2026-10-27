@@ -21,6 +21,8 @@ afterPack: scripts/after-pack.cjs
 mac:
   category: public.app-category.developer-tools
   icon: build/icon.icns
+  # llama.cpp's server is built for macOS 13.3, a little above Electron's 13.0.
+  minimumSystemVersion: '13.3'
   target:
     - target: dmg
       arch: [arm64, x64]
