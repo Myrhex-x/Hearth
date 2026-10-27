@@ -183,14 +183,14 @@ function TerminalView({ session, active, onReady, onExit }: { session: Session; 
 
   useEffect(() => {
     if (active) {
-      requestAnimationFrame(() => {
+      setTimeout(() => {
         try {
           fitRef.current?.fit()
         } catch {
           // ignore
         }
         termRef.current?.focus()
-      })
+      }, 0)
     }
   }, [active])
 

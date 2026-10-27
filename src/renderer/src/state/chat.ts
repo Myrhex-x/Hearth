@@ -368,8 +368,9 @@ function streamOnce(
         return { ...m, parts }
       })
     }
+    // A timer rather than an animation frame: frames stop while the window is hidden.
     const schedule = () => {
-      if (!frame) frame = requestAnimationFrame(flush)
+      if (!frame) frame = window.setTimeout(flush, 33)
     }
 
     const off = api.llm.onChatEvent(requestId, (e: ChatEvent) => {
@@ -393,7 +394,7 @@ function streamOnce(
       } else if (e.type === 'tool_calls') {
         toolCalls = [...toolCalls, ...e.calls]
       } else if (e.type === 'done' || e.type === 'error') {
-        if (frame) cancelAnimationFrame(frame)
+        if (frame) clearTimeout(frame)
         flush()
         patchMessage(threadId, messageId, (m) => ({
           ...m,

@@ -83,6 +83,7 @@ test('undo puts the file back', async () => {
 
 test('quick open finds a file', async () => {
   await page.keyboard.press(`${MOD}+P`)
+  await expect(page.locator('.palette-input input')).toBeFocused()
   await page.keyboard.type('app')
   await page.keyboard.press('Enter')
   await expect(page.locator('.tab.is-active .tab-title')).toContainText('app.js')

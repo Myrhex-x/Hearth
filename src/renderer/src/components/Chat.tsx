@@ -590,10 +590,10 @@ function Composer() {
     setDraft(next)
     addChip({ kind: 'file', path })
     setMention(null)
-    requestAnimationFrame(() => {
+    setTimeout(() => {
       el?.focus()
       el?.setSelectionRange(mention.start, mention.start)
-    })
+    }, 0)
   }
 
   const submit = () => {

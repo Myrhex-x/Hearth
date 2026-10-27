@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ChevronRight, Search } from 'lucide-react'
 import { COMMANDS, runCommand } from '../lib/commands'
 import { fuzzyFilter } from '../lib/fuzzy'
@@ -21,13 +21,15 @@ export function CommandPalette() {
   const ensureFiles = useWorkspace((s) => s.ensureFiles)
   const hasFolder = useWorkspace((s) => !!s.info)
 
-  useEffect(() => {
+  // Focus synchronously: animation frames are throttled in background windows,
+  // and keystrokes typed right after the shortcut must land in the field.
+  useLayoutEffect(() => {
     if (!palette) return
     setQuery(palette.mode === 'commands' ? '>' + palette.query : palette.query)
     setIndex(0)
     setPendingEnter(false)
+    inputRef.current?.focus()
     if (palette.mode === 'files') void ensureFiles()
-    requestAnimationFrame(() => inputRef.current?.focus())
   }, [palette, ensureFiles])
 
   const isCommands = query.startsWith('>')
@@ -90,6 +92,7 @@ export function CommandPalette() {
           {isCommands ? <ChevronRight size={16} strokeWidth={2} className="tone-ember" /> : <Search size={15} strokeWidth={2} />}
           <input
             ref={inputRef}
+            autoFocus
             value={query}
             spellCheck={false}
             placeholder={isCommands ? 'Type a command' : 'Search files by name. Type > for commands'}
