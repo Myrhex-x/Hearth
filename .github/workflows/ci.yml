@@ -22,17 +22,30 @@ jobs:
           cache: npm
       - name: Install
         run: npm ci
+      - name: Model engine for every packaged architecture
+        shell: bash
+        run: |
+          case "$RUNNER_OS" in
+            macOS) npm run engine -- --target mac-arm64 --target mac-x64 ;;
+            Windows) npm run engine -- --target win-x64 --target win-arm64 ;;
+            Linux) npm run engine -- --target linux-x64 ;;
+          esac
       - name: Typecheck
         run: npm run typecheck
       - name: Unit tests
         run: npm test
       - name: Build
         run: npm run build
+      # HEARTH_REAL_ENGINE runs llama.cpp's server for real, with models of about a megabyte.
       - name: End-to-end tests
         if: runner.os != 'Linux'
+        env:
+          HEARTH_REAL_ENGINE: '1'
         run: npx playwright test
       - name: End-to-end tests (virtual display)
         if: runner.os == 'Linux'
+        env:
+          HEARTH_REAL_ENGINE: '1'
         run: xvfb-run -a npx playwright test
       - name: End-to-end tests with Windows PowerShell 5.1
         if: runner.os == 'Windows'
@@ -43,6 +56,8 @@ jobs:
         run: npx electron-builder --dir --publish never
       - name: End-to-end tests against the packaged app
         shell: bash
+        env:
+          HEARTH_REAL_ENGINE: '1'
         run: |
           case "$RUNNER_OS" in
             Windows) export HEARTH_EXE="$PWD/release/win-unpacked/Hearth.exe" ;;

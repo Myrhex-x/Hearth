@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, resolve } from 'path'
 import { DESCRIPTION, startMockOllama, type MockOllama } from './mockOllama'
+import { testModelBytes } from '../../src/shared/engineCatalog'
 
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
 
@@ -29,6 +30,28 @@ let mock: MockOllama
 let app: ElectronApplication
 let page: Page
 let project: string
+let userData: string
+let engineLogFile: string
+
+type EngineEntry = { type: string; pid?: number; path?: string; body?: Record<string, unknown> }
+
+/** What the stand-in engine was asked, in order. */
+function engineLog(): EngineEntry[] {
+  try {
+    return readFileSync(engineLogFile, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as EngineEntry)
+  } catch {
+    return []
+  }
+}
+
+function running(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
 
 test.describe.configure({ mode: 'serial' })
 
@@ -53,7 +76,8 @@ test.beforeAll(async () => {
   git('add', '-A')
   git('commit', '-q', '-m', 'Fixture')
 
-  const userData = mkdtempSync(join(tmpdir(), 'hearth-e2e-profile-'))
+  userData = mkdtempSync(join(tmpdir(), 'hearth-e2e-profile-'))
+  engineLogFile = join(userData, 'fake-engine.log')
   writeFileSync(
     join(userData, 'settings.json'),
     JSON.stringify({
@@ -74,7 +98,15 @@ test.beforeAll(async () => {
   const exe = process.env.HEARTH_EXE
   const args = exe ? [] : [resolve(__dirname, '../../out/main/index.js')]
   if (process.platform === 'linux') args.push('--no-sandbox')
-  const env = { ...process.env, HEARTH_USER_DATA: userData }
+  const env = {
+    ...process.env,
+    HEARTH_USER_DATA: userData,
+    // The built-in engine: a stand-in server, a tiny test model, and the mock as Hugging Face.
+    HEARTH_ENGINE_SCRIPT: resolve(__dirname, 'fakeEngine.mjs'),
+    HEARTH_FAKE_ENGINE_LOG: engineLogFile,
+    HEARTH_TEST_MODELS: '1',
+    HEARTH_MODEL_MIRROR: mock.url
+  }
   app = await electron.launch(exe ? { executablePath: exe, args, env } : { args, env })
   page = await app.firstWindow()
   page.on('pageerror', (e) => console.error('[pageerror]', e.message))
@@ -84,6 +116,9 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   await app?.close()
   await mock?.close()
+  // Quitting Hearth stops its engine: nothing keeps running after.
+  const started = engineLog().find((e) => e.type === 'start')
+  if (started?.pid) await expect.poll(() => running(started.pid!), { timeout: 10_000 }).toBe(false)
 })
 
 test('opens the last project and lists its files', async () => {
@@ -258,6 +293,33 @@ test('a model that cannot see gets the image described', async () => {
   await expect(page.locator('.lightbox img')).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(page.locator('.lightbox')).toHaveCount(0)
+})
+
+test('the built-in engine downloads a model and answers', async () => {
+  await page.click('.hearth-pill')
+  const row = page.locator('.catalog-row', { hasText: 'Tiny test model' })
+  await row.locator('.catalog-get').click()
+  // Downloaded and checked, it leaves the catalog for the list of models.
+  await expect(row).toHaveCount(0, { timeout: 20_000 })
+  await page.locator('.model-row', { hasText: 'tiny-test' }).click()
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.hearth-pill-name')).toContainText('tiny-test')
+  await page.click('.composer-input')
+  await page.keyboard.type('Say hello')
+  await page.keyboard.press('Enter')
+  await expect(page.locator('.msg-assistant .md').last()).toContainText('Hello from the built-in engine', { timeout: 20_000 })
+
+  const file = join(userData, 'models', 'tiny-test-1m', 'tiny-test.gguf')
+  expect(readFileSync(file).equals(Buffer.from(testModelBytes()))).toBe(true)
+  const preset = readFileSync(join(userData, 'engine', 'models.ini'), 'utf8')
+  // No colon in the engine's name for it, and a path relative to the models folder.
+  expect(preset).toContain('[tiny-test-1m]\nmodel = tiny-test-1m/tiny-test.gguf\n')
+  expect(preset).toMatch(/^c = 16384$/m)
+  const chat = engineLog().filter((e) => e.path === '/v1/chat/completions').pop()
+  expect(chat?.body?.model).toBe('tiny-test-1m')
+  // Thinking is off in these settings, so the engine is asked not to reason.
+  expect(chat?.body?.chat_template_kwargs).toEqual({ enable_thinking: false })
+  expect(engineLog().filter((e) => e.type === 'start')).toHaveLength(1)
 })
 
 test('captures the window for review', async () => {

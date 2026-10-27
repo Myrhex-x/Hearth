@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { Bot, Code2, Info, Paintbrush, ScanSearch, Server, Sparkles, Trash2, X } from 'lucide-react'
 import type { AppInfo, ProviderConfig, ProviderKind } from '../../../shared/types'
 import { api, uid } from '../api'
-import { shortModelName } from '../lib/format'
+import { formatBytes, shortModelName } from '../lib/format'
 import { checkForUpdates } from '../lib/updates'
 import { chatModels, embeddingModels, useModels, visionModels } from '../state/models'
 import { useMeaning } from '../state/meaning'
@@ -68,14 +68,17 @@ function ProviderRow({ p }: { p: ProviderConfig }) {
   const [key, setKey] = useState(p.apiKey ?? '')
   const save = (patch: Partial<ProviderConfig>) =>
     void update({ providers: settings.providers.map((x) => (x.id === p.id ? { ...x, ...patch } : x)) }).then(() => useModels.getState().refresh())
-  const isDefault = ['ollama', 'lmstudio', 'llamacpp'].includes(p.id)
+  const isDefault = ['builtin', 'ollama', 'lmstudio', 'llamacpp'].includes(p.id)
+  const kindLabel = p.kind === 'builtin' ? 'llama.cpp, inside Hearth' : p.kind === 'ollama' ? 'Ollama' : 'OpenAI compatible'
   return (
     <div className="provider">
       <div className="provider-top">
         <span className={cx('dot', !p.enabled ? '' : status?.ok ? 'is-ok' : 'is-off')} />
         <span className="provider-name">{p.name}</span>
-        <span className="provider-kind">{p.kind === 'ollama' ? 'Ollama' : 'OpenAI compatible'}</span>
-        <span className="provider-status">{!p.enabled ? 'Off' : status?.ok ? `Connected${status.version ? `, ${status.version}` : ''}` : 'Not reachable'}</span>
+        <span className="provider-kind">{kindLabel}</span>
+        <span className="provider-status">
+          {!p.enabled ? 'Off' : status?.ok ? (p.kind === 'builtin' ? (status.version ?? 'Ready') : `Connected${status.version ? `, ${status.version}` : ''}`) : p.kind === 'builtin' ? 'Missing' : 'Not reachable'}
+        </span>
         {!isDefault && (
           <IconButton label="Remove server" className="sm" onClick={() => void update({ providers: settings.providers.filter((x) => x.id !== p.id) })}>
             <Trash2 size={13} />
@@ -83,7 +86,7 @@ function ProviderRow({ p }: { p: ProviderConfig }) {
         )}
         <Toggle checked={p.enabled} onChange={(v) => save({ enabled: v })} label={`Use ${p.name}`} />
       </div>
-      {p.enabled && (
+      {p.enabled && p.kind !== 'builtin' && (
         <div className="provider-fields">
           <input className="field mono" value={url} spellCheck={false} onChange={(e) => setUrl(e.target.value)} onBlur={() => url !== p.baseUrl && save({ baseUrl: url.trim() })} />
           {p.kind === 'openai' && (
@@ -99,6 +102,51 @@ function ProviderRow({ p }: { p: ProviderConfig }) {
         </div>
       )}
     </div>
+  )
+}
+
+/** Models the built-in engine downloaded, with the space they take. */
+function Downloaded() {
+  const catalog = useModels((x) => x.catalog)
+  const remove = useModels((x) => x.removeBuiltin)
+  const [busy, setBusy] = useState<string | null>(null)
+  const installed = catalog.filter((m) => m.installed)
+  const total = installed.reduce((sum, m) => sum + m.sizeBytes, 0)
+  const reveal = (
+    <button className="link" onClick={() => void api.engine.reveal()}>
+      Show the folder
+    </button>
+  )
+  if (!installed.length) {
+    return <Group title="Downloaded models" note={<>Models you download from the models panel are kept in Hearth's data folder. {reveal}</>}>{<div className="setting-row muted">None yet.</div>}</Group>
+  }
+  return (
+    <Group title="Downloaded models" note={<>{formatBytes(total)} in Hearth's data folder. {reveal}</>}>
+      {installed.map((m) => (
+        <Row key={m.name} label={m.label} detail={`${m.note}. ${formatBytes(m.sizeBytes)}`}>
+          <Button
+            size="sm"
+            disabled={busy === m.name}
+            onClick={async () => {
+              const choice = await api.app.messageBox({
+                type: 'warning',
+                message: `Remove ${m.label}?`,
+                detail: `This frees ${formatBytes(m.sizeBytes)}. You can download it again later.`,
+                buttons: ['Remove', 'Cancel'],
+                defaultId: 1,
+                cancelId: 1
+              })
+              if (choice !== 0) return
+              setBusy(m.name)
+              await remove(m.name)
+              setBusy(null)
+            }}
+          >
+            {busy === m.name ? 'Removing' : 'Remove'}
+          </Button>
+        </Row>
+      ))}
+    </Group>
   )
 }
 
@@ -192,7 +240,7 @@ function Models() {
   const seers = visionModels(all)
   return (
     <>
-      <Group title="Model servers" note="Hearth only connects to the servers listed here. Ollama is used for downloads and for keeping models warm.">
+      <Group title="Model servers" note="The built-in engine runs inside Hearth. Hearth only connects to the other servers listed here.">
         {s.providers.map((p) => (
           <ProviderRow key={p.id} p={p} />
         ))}
@@ -200,6 +248,7 @@ function Models() {
           <AddProvider />
         </div>
       </Group>
+      <Downloaded />
       <Group title="Chat and agent">
         <Row label="Model">
           <select className="select" value={s.chatModel ?? ''} onChange={(e) => void update({ chatModel: e.target.value || null })}>
@@ -234,7 +283,7 @@ function Models() {
             ))}
           </select>
         </Row>
-        <Row label="Context window" detail="How much text the model reads at once. Larger needs more memory. Ollama only.">
+        <Row label="Context window" detail="How much text the model reads at once. Larger needs more memory. For built-in models and Ollama.">
           <select className="select" value={s.contextWindow} onChange={(e) => void update({ contextWindow: Number(e.target.value) })}>
             {[4096, 8192, 16384, 32768, 65536, 131072].map((n) => (
               <option key={n} value={n}>

@@ -8,3 +8,5 @@ playwright-report/
 *.log
 .env
 .env.*
+# llama.cpp builds, fetched by scripts/fetch-engine.mjs (not src/main/engine)
+/engine/

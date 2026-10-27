@@ -1,5 +1,7 @@
 import { create } from 'zustand'
 import type { GenStats, LoadedModel, ModelInfo, ProviderStatus, PullProgress } from '../../../shared/types'
+import { modelIdOf } from '../../../shared/types'
+import type { EngineCatalogEntry } from '../../../shared/engineCatalog'
 import { api, uid } from '../api'
 import { settingsNow, useSettings } from './settings'
 import { toast } from './ui'
@@ -24,11 +26,16 @@ interface ModelsStore {
   lastStats: (GenStats & { modelId: string }) | null
   autocompleteBusy: boolean
   autocompleteError: string | null
+  /** Downloads in progress, by model id: the engine and Ollama share model names. */
   pulls: Record<string, PullState>
+  /** What the built-in engine can download, and what it has. */
+  catalog: EngineCatalogEntry[]
+  memoryBytes: number
   refresh(): Promise<void>
   refreshLoaded(): Promise<void>
   pull(providerId: string, name: string): void
-  cancelPull(name: string): void
+  cancelPull(modelId: string): void
+  removeBuiltin(name: string): Promise<void>
   warm(modelId: string): Promise<void>
   unload(modelId: string): Promise<void>
 }
@@ -46,12 +53,20 @@ export const useModels = create<ModelsStore>((set, get) => ({
   autocompleteBusy: false,
   autocompleteError: null,
   pulls: {},
+  catalog: [],
+  memoryBytes: 0,
 
   async refresh() {
     set({ refreshing: true })
     try {
-      const [statuses, models, loaded] = await Promise.all([api.llm.providerStatus(), api.llm.listModels(), api.llm.loaded()])
-      set({ statuses, models, loaded, ready: true })
+      const [statuses, models, loaded, catalog, info] = await Promise.all([
+        api.llm.providerStatus(),
+        api.llm.listModels(),
+        api.llm.loaded(),
+        api.engine.catalog().catch(() => []),
+        get().memoryBytes ? null : api.app.info()
+      ])
+      set({ statuses, models, loaded, catalog, ready: true, ...(info ? { memoryBytes: info.memoryBytes } : {}) })
       pickDefaults(models)
     } finally {
       set({ refreshing: false })
@@ -67,18 +82,20 @@ export const useModels = create<ModelsStore>((set, get) => ({
   },
 
   pull(providerId, name) {
+    const key = modelIdOf(providerId, name)
+    if (get().pulls[key]) return
     const requestId = uid('pull')
-    set({ pulls: { ...get().pulls, [name]: { requestId, providerId, name, status: 'starting' } } })
+    set({ pulls: { ...get().pulls, [key]: { requestId, providerId, name, status: 'starting' } } })
     const off = api.llm.onPullProgress(requestId, (p) => {
-      const cur = get().pulls[name]
+      const cur = get().pulls[key]
       if (!cur) return
-      set({ pulls: { ...get().pulls, [name]: { ...cur, ...p, total: p.total ?? cur.total, completed: p.completed ?? cur.completed } } })
+      set({ pulls: { ...get().pulls, [key]: { ...cur, ...p, total: p.total ?? cur.total, completed: p.completed ?? cur.completed } } })
       if (p.done) {
         off()
-        if (p.error) toast(`Could not download ${name}: ${p.error}`, 'error')
-        else toast(`${name} is ready`, 'success')
+        if (p.error && p.error !== 'Cancelled') toast(`Could not download ${name}: ${p.error}`, 'error')
+        else if (!p.error) toast(`${name} is ready`, 'success')
         const next = { ...get().pulls }
-        delete next[name]
+        delete next[key]
         set({ pulls: next })
         void get().refresh()
       }
@@ -86,9 +103,18 @@ export const useModels = create<ModelsStore>((set, get) => ({
     api.llm.pull(requestId, providerId, name)
   },
 
-  cancelPull(name) {
-    const p = get().pulls[name]
+  cancelPull(modelId) {
+    const p = get().pulls[modelId]
     if (p) api.llm.abort(p.requestId)
+  },
+
+  async removeBuiltin(name) {
+    try {
+      await api.engine.remove(name)
+    } catch (err) {
+      toast(`Could not remove ${name}: ${(err as Error).message}`, 'error')
+    }
+    await get().refresh()
   },
 
   async warm(modelId) {

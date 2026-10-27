@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type { ChatEvent, GenStats, LlmMessage, ToolCall, ToolSpec } from '../../../shared/types'
 import { splitModelId } from '../../../shared/types'
 import { isLooping } from '../../../shared/loop'
+import { announcesAction } from '../../../shared/intent'
 import { STANDS_OUT } from '../../../shared/semantic'
 import { extractToolCalls } from '../../../shared/toolText'
 import { api, uid } from '../api'
@@ -664,9 +665,10 @@ async function runTurn(threadId: string, messageId: string): Promise<void> {
   const pixels = (await Promise.all(ownImages.map((img) => imageData(img.id)))).filter((d): d is string => !!d)
   let toolIndex = 0
   let nudged = false
+  let promptedToAct = false
   let trimNoted = false
-  // Ollama gets num_ctx from us; other servers report a length or we cannot know it.
-  const contextLimit = model?.providerKind === 'ollama' ? contextWindow : (model?.contextLength ?? 0)
+  // Ollama and the built-in engine get their context size from us; other servers report one or we cannot know it.
+  const contextLimit = model?.providerKind === 'ollama' || model?.providerKind === 'builtin' ? contextWindow : (model?.contextLength ?? 0)
 
   if (!toolsEnabled && mode === 'agent') {
     patchMessage(threadId, messageId, (m) => ({
@@ -767,6 +769,16 @@ async function runTurn(threadId: string, messageId: string): Promise<void> {
         role: 'user',
         content: 'You changed files after the last command you ran. Run the relevant command again (tests, build or linter) to check your changes, fix anything that fails, then give your summary.'
       })
+      continue
+    }
+    // "Let's update addItem." and nothing more: small models often stop at the promise.
+    if (!calls.length && !stopped && !promptedToAct && mode === 'agent' && toolsEnabled && announcesAction(content) && step < settings.agent.maxSteps - 1) {
+      promptedToAct = true
+      patchMessage(threadId, messageId, (m) => ({
+        ...m,
+        parts: [...(m.parts ?? []), { kind: 'notice', text: 'The model said what it would do next, then stopped, so Hearth asked it to go ahead.' }]
+      }))
+      appendTranscript(threadId, messageId, { role: 'user', content: 'Go ahead: do that now with your tools instead of describing it. Then check the result.' })
       continue
     }
     if (!calls.length || stopped) {

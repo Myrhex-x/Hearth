@@ -13,11 +13,13 @@ export interface AppInfo {
   shellName: string
   home: string
   isDev: boolean
+  /** Total memory, to suggest a model that fits. */
+  memoryBytes: number
 }
 
 // Models and providers
 
-export type ProviderKind = 'ollama' | 'openai'
+export type ProviderKind = 'ollama' | 'openai' | 'builtin'
 
 export interface ProviderConfig {
   id: string
@@ -345,6 +347,8 @@ export type SettingsPatch = Partial<Omit<Settings, 'agent' | 'editor' | 'termina
 }
 
 export const DEFAULT_PROVIDERS: ProviderConfig[] = [
+  // llama.cpp inside Hearth: runs the models Hearth downloads, nothing to install.
+  { id: 'builtin', kind: 'builtin', name: 'Built-in', baseUrl: '', enabled: true },
   { id: 'ollama', kind: 'ollama', name: 'Ollama', baseUrl: 'http://127.0.0.1:11434', enabled: true },
   { id: 'lmstudio', kind: 'openai', name: 'LM Studio', baseUrl: 'http://127.0.0.1:1234/v1', enabled: true },
   { id: 'llamacpp', kind: 'openai', name: 'llama.cpp', baseUrl: 'http://127.0.0.1:8080/v1', enabled: false }

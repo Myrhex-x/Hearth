@@ -29,6 +29,14 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - name: Model engine for every packaged architecture
+        shell: bash
+        run: |
+          case "$RUNNER_OS" in
+            macOS) npm run engine -- --target mac-arm64 --target mac-x64 ;;
+            Windows) npm run engine -- --target win-x64 --target win-arm64 ;;
+            Linux) npm run engine -- --target linux-x64 ;;
+          esac
       - run: npm run build
       - name: Package
         run: npx electron-builder ${{ matrix.args }} --publish never

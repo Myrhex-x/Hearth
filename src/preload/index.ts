@@ -74,6 +74,12 @@ const api: HearthApi = {
     warm: (modelId, keepAlive) => ipcRenderer.invoke('llm:warm', modelId, keepAlive),
     unload: (modelId) => ipcRenderer.invoke('llm:unload', modelId)
   },
+  engine: {
+    catalog: () => ipcRenderer.invoke('engine:catalog'),
+    info: () => ipcRenderer.invoke('engine:info'),
+    remove: (name) => ipcRenderer.invoke('engine:remove', name),
+    reveal: () => ipcRenderer.invoke('engine:reveal')
+  },
   terminal: {
     create: (opts) => ipcRenderer.invoke('term:create', opts),
     write: (id, data) => ipcRenderer.send('term:write', id, data),

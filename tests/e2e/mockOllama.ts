@@ -3,6 +3,7 @@
 
 import http from 'http'
 import type { AddressInfo } from 'net'
+import { TEST_MODEL, testModelBytes } from '../../src/shared/engineCatalog'
 
 export interface Recorded {
   path: string
@@ -132,6 +133,14 @@ export async function startMockOllama(): Promise<MockOllama> {
       body = {}
     }
     requests.push({ path: req.url ?? '', body })
+    // Stands in for Hugging Face for the built-in engine's test model, resuming included.
+    if (req.url === `/${TEST_MODEL.repo}/resolve/${TEST_MODEL.revision}/${TEST_MODEL.files[0].name}`) {
+      const bytes = Buffer.from(testModelBytes())
+      const from = Number(/^bytes=(\d+)-$/.exec(String(req.headers.range ?? ''))?.[1] ?? 0)
+      res.writeHead(from ? 206 : 200, { 'content-type': 'application/octet-stream', 'content-length': String(bytes.length - from) })
+      res.end(bytes.subarray(from))
+      return
+    }
     switch (req.url) {
       case '/api/version':
         return json(res, { version: '0.0.0-mock' })

@@ -26,6 +26,7 @@ import type {
   IndexStatus,
   MeaningResult
 } from '../shared/types'
+import type { EngineCatalogEntry, EngineInfo } from '../shared/engineCatalog'
 
 type Unsubscribe = () => void
 
@@ -86,6 +87,13 @@ export interface HearthApi {
     onPullProgress(requestId: string, cb: (progress: PullProgress) => void): Unsubscribe
     warm(modelId: string, keepAlive: string): Promise<void>
     unload(modelId: string): Promise<void>
+  }
+  /** The built-in engine: models Hearth downloads and runs itself. Downloads go through llm.pull. */
+  engine: {
+    catalog(): Promise<EngineCatalogEntry[]>
+    info(): Promise<EngineInfo>
+    remove(name: string): Promise<void>
+    reveal(): Promise<void>
   }
   terminal: {
     create(opts: { cols: number; rows: number }): Promise<{ id: string; shell: string } | { error: string }>

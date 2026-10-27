@@ -98,9 +98,12 @@ export async function openaiChat(
   name: string,
   req: ChatRequest,
   signal: AbortSignal,
-  emit: (e: ChatEvent) => void
+  emit: (e: ChatEvent) => void,
+  /** Fields only some servers understand, like llama.cpp's chat_template_kwargs. */
+  extra: Record<string, unknown> = {}
 ): Promise<void> {
   const body: Record<string, unknown> = {
+    ...extra,
     model: name,
     messages: req.messages.map(toOpenAiMessage),
     stream: true,

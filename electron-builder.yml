@@ -11,6 +11,10 @@ files:
   - '!**/*.map'
 asarUnpack:
   - '**/node_modules/node-pty/**'
+# llama.cpp's server, fetched per platform by scripts/fetch-engine.mjs.
+extraResources:
+  - from: engine/${os}-${arch}
+    to: engine
 # node-pty ships prebuilt N-API binaries for macOS and Windows; nothing to rebuild.
 npmRebuild: false
 afterPack: scripts/after-pack.cjs

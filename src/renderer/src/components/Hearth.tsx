@@ -8,6 +8,7 @@ import { chatModels, embeddingModels, useModels } from '../state/models'
 import { useSettings } from '../state/settings'
 import { useUi } from '../state/ui'
 import { Button, Ember, Popover, Spinner, Toggle, cx, type EmberState } from './ui'
+import { Catalog, GetModel } from './EngineModels'
 
 export function useEmber(): { state: EmberState; word: string } {
   const { statuses, loaded, activity, activityModel, liveTokens, ready } = useModels()
@@ -47,17 +48,6 @@ export function HearthIndicator() {
   )
 }
 
-const SUGGESTED = [
-  { name: 'qwen2.5-coder:1.5b', note: 'Fast autocomplete', size: 'about 1 GB' },
-  { name: 'qwen3-embedding:0.6b', note: 'Search by meaning', size: 'about 640 MB' },
-  { name: 'qwen3-vl:4b', note: 'Reads images, uses tools', size: 'about 3.3 GB' },
-  { name: 'qwen2.5-coder:7b', note: 'Autocomplete and chat', size: 'about 4.7 GB' },
-  { name: 'qwen3:8b', note: 'Agent on 16 GB machines', size: 'about 5.2 GB' },
-  { name: 'qwen3:14b', note: 'Stronger agent', size: 'about 9.3 GB' },
-  { name: 'qwen3-coder:30b', note: 'Best agent, 32 GB or more', size: 'about 19 GB' },
-  { name: 'gpt-oss:20b', note: 'Reasoning agent', size: 'about 14 GB' }
-]
-
 function Capabilities({ m }: { m: ModelInfo }) {
   if (!m.capabilities) return null
   const caps: string[] = []
@@ -92,26 +82,28 @@ export function ModelsPanel() {
   const chat = models.find((m) => m.id === settings.chatModel)
   const chatLoaded = loaded.find((l) => l.id === settings.chatModel)
   const ollama = statuses.find((s) => s.kind === 'ollama' && s.ok)
+  const engine = statuses.find((s) => s.kind === 'builtin' && s.ok)
   const anyOnline = statuses.some((s) => s.ok)
   const talkers = chatModels(models)
   const embedders = embeddingModels(models)
   const fim = talkers.filter((m) => !m.capabilities || m.capabilities.includes('insert'))
-  const installed = new Set(models.map((m) => m.name))
+  const ollamaPulls = Object.entries(pulls).filter(([, p]) => p.providerId !== 'builtin')
 
   let headline: string
   let sub: string
   if (!anyOnline) {
-    headline = 'No model server found'
-    sub = 'Start Ollama, LM Studio or llama.cpp on this computer, then refresh.'
+    headline = 'No model engine'
+    sub = 'This copy of Hearth has no built-in engine, and no model server answered.'
   } else if (!chat) {
-    headline = models.length ? 'Pick a model to work with' : 'No models installed yet'
-    sub = models.length ? 'Choose one below.' : 'Download one below to light the hearth.'
+    headline = models.length ? 'Pick a model to work with' : 'No models yet'
+    sub = models.length ? 'Choose one below.' : 'Download one below. It runs inside Hearth, on this computer.'
   } else if (chat.providerKind === 'openai') {
     headline = `${shortModelName(chat.name)} is ready`
     sub = `Served by ${chat.providerName}.`
   } else if (chatLoaded) {
     headline = `${shortModelName(chat.name)} is warm`
-    sub = `In memory, ${formatBytes(chatLoaded.vramBytes || chatLoaded.sizeBytes)}, ${timeUntil(chatLoaded.expiresAt)}.`
+    const until = chatLoaded.expiresAt ? timeUntil(chatLoaded.expiresAt) : ''
+    sub = `In memory, ${formatBytes(chatLoaded.vramBytes || chatLoaded.sizeBytes)}${until ? `, ${until}` : ''}.`
   } else {
     headline = `${shortModelName(chat.name)} is cold`
     sub = 'It loads with your next message. Warming it now makes the first answer faster.'
@@ -131,7 +123,7 @@ export function ModelsPanel() {
           {refreshing ? <Spinner /> : <RefreshCw size={14} />}
         </button>
       </div>
-      {chat && chat.providerKind === 'ollama' && (
+      {chat && chat.providerKind !== 'openai' && (
         <div className="models-head-actions">
           {chatLoaded ? (
             <Button size="sm" variant="tinted" icon={<Snowflake size={13} />} onClick={() => void unload(chat.id)}>
@@ -147,7 +139,7 @@ export function ModelsPanel() {
 
       {!anyOnline && (
         <div className="models-empty">
-          <p>Hearth talks to a model server running on your computer. The easiest is Ollama.</p>
+          <p>Hearth can also use a model server running on your computer, like Ollama.</p>
           <div className="row gap-6">
             <Button size="sm" variant="filled" icon={<ExternalLink size={13} />} onClick={() => api.app.openExternal('https://ollama.com/download')}>
               Get Ollama
@@ -201,7 +193,10 @@ export function ModelsPanel() {
               ))}
             </select>
           ) : (
-            <p className="hint">Autocomplete needs a fill-in-the-middle model. qwen2.5-coder:1.5b is small and quick.</p>
+            <div className="hint-row">
+              <p className="hint">Autocomplete needs a fill-in-the-middle model. A small code model keeps it quick.</p>
+              {engine && <GetModel name="qwen2.5-coder:1.5b" />}
+            </div>
           )}
         </section>
       )}
@@ -222,8 +217,21 @@ export function ModelsPanel() {
               ))}
             </select>
           ) : (
-            <p className="hint">Finding code by what it does needs a small embedding model. qwen3-embedding:0.6b understands code well.</p>
+            <div className="hint-row">
+              <p className="hint">Finding code by what it does needs a small embedding model.</p>
+              {engine && <GetModel name="qwen3-embedding:0.6b" />}
+            </div>
           )}
+        </section>
+      )}
+
+      {engine && (
+        <section className="models-section">
+          <div className="section-label row between">
+            <span>Download</span>
+            <span className="section-aside">Runs inside Hearth</span>
+          </div>
+          <Catalog />
         </section>
       )}
 
@@ -246,15 +254,15 @@ export function ModelsPanel() {
               Get
             </Button>
           </form>
-          {Object.values(pulls).map((p) => {
+          {ollamaPulls.map(([key, p]) => {
             const pct = p.total ? Math.round(((p.completed ?? 0) / p.total) * 100) : null
             return (
-              <div key={p.name} className="pull">
+              <div key={key} className="pull">
                 <div className="row between">
                   <span className="pull-name">{p.name}</span>
                   <span className="pull-status">
                     {pct !== null ? `${pct}%` : p.status}
-                    <button className="icon-btn sm" title="Cancel" onClick={() => cancelPull(p.name)}>
+                    <button className="icon-btn sm" title="Cancel" onClick={() => cancelPull(key)}>
                       <X size={12} />
                     </button>
                   </span>
@@ -265,16 +273,6 @@ export function ModelsPanel() {
               </div>
             )
           })}
-          <div className="suggestions">
-            {SUGGESTED.filter((s) => !installed.has(s.name) && !pulls[s.name]).map((s) => (
-              <button key={s.name} className="suggestion" onClick={() => pull(ollama.id, s.name)} title={`Download ${s.name}, ${s.size}`}>
-                <span className="suggestion-name">{s.name}</span>
-                <span className="suggestion-note">
-                  {s.note} · {s.size}
-                </span>
-              </button>
-            ))}
-          </div>
         </section>
       )}
 

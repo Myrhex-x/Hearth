@@ -9,14 +9,16 @@ import { useModels } from '../state/models'
 import { useSettings } from '../state/settings'
 import { useUi } from '../state/ui'
 import { Button, FileIcon, Spinner, cx } from './ui'
+import { GetModel } from './EngineModels'
 
-const SUGGESTED = { name: 'qwen3-embedding:0.6b', size: 'about 640 MB' }
+const SUGGESTED = 'qwen3-embedding:0.6b'
 
 function IndexState() {
   const status = useMeaning((s) => s.status)
   const indexing = useSettings((s) => s.settings.indexing)
   const update = useSettings((s) => s.update)
   const { statuses, pulls, pull } = useModels()
+  const engine = statuses.find((s) => s.kind === 'builtin' && s.ok)
   const ollama = statuses.find((s) => s.kind === 'ollama' && s.ok)
 
   if (!indexing) {
@@ -30,18 +32,20 @@ function IndexState() {
     )
   }
   if (status.state === 'no-model' || status.state === 'off') {
-    const pulling = pulls[SUGGESTED.name]
+    const ollamaPull = ollama && pulls[`${ollama.id}::${SUGGESTED}`]
     return (
       <div className="meaning-state">
         <p>Find code by what it does, like “where are passwords checked”. This needs a small embedding model that runs on your computer.</p>
-        {ollama ? (
-          pulling ? (
+        {engine ? (
+          <GetModel name={SUGGESTED} />
+        ) : ollama ? (
+          ollamaPull ? (
             <span className="meaning-progress-text">
-              <Spinner size={10} /> Downloading {SUGGESTED.name} {pulling.total ? `${Math.round(((pulling.completed ?? 0) / pulling.total) * 100)}%` : ''}
+              <Spinner size={10} /> Downloading {SUGGESTED} {ollamaPull.total ? `${Math.round(((ollamaPull.completed ?? 0) / ollamaPull.total) * 100)}%` : ''}
             </span>
           ) : (
-            <Button size="sm" variant="tinted" icon={<ArrowDownToLine size={12} />} onClick={() => pull(ollama.id, SUGGESTED.name)}>
-              Get {SUGGESTED.name} · {SUGGESTED.size}
+            <Button size="sm" variant="tinted" icon={<ArrowDownToLine size={12} />} onClick={() => pull(ollama.id, SUGGESTED)}>
+              Get {SUGGESTED} with Ollama
             </Button>
           )
         ) : (

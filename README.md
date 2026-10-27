@@ -6,7 +6,7 @@
 
 <p align="center">
   A calm code editor for AI models that live on your machine.<br />
-  Agent, inline edits, autocomplete and search by meaning, powered by Ollama, LM Studio or llama.cpp. Nothing leaves your computer.
+  Agent, inline edits, autocomplete and search by meaning, with models that run inside Hearth. Nothing else to install, and nothing leaves your computer.
 </p>
 
 <p align="center">
@@ -29,6 +29,7 @@ Local models are smaller than cloud ones, so Hearth is built to help them succee
 
 ## What it does
 
+- **Models built in.** Hearth runs models itself, with llama.cpp inside the app. Pick one sized for your computer, download it from Hearth, and start. Ollama, LM Studio and other local servers still work alongside.
 - **Agent mode.** Describe a change. The model reads and searches your files, makes focused edits that show up as diffs, and runs commands like your tests after you approve them. Every change can be reviewed and undone, file by file or all at once.
 - **Ask mode.** The same project awareness with read-only tools, for questions and explanations.
 - **Edit with ⌘K (Ctrl+K on Windows).** Select code, describe what you want, watch the rewrite stream in place next to the original, then keep it or undo it.
@@ -42,6 +43,10 @@ Local models are smaller than cloud ones, so Hearth is built to help them succee
 - **A real editor.** Monaco (the editor inside VS Code) with warm Coal and Paper themes, tabs, quick open, project search, a command palette and a built-in terminal.
 - **Project rules.** Hearth reads `AGENTS.md`, `.hearth/rules.md` and `.cursorrules` and passes them to the model.
 - **At home on both systems.** Translucent sidebar, traffic lights and a native menu bar on macOS. Native window controls, PowerShell and Windows shortcuts on Windows.
+
+<p align="center">
+  <img src="docs/welcome.png" width="66%" alt="The first run: Hearth offers a model sized for this computer, with nothing else to install" />
+</p>
 
 <p align="center">
   <img src="docs/inline-edit.png" width="49%" alt="Editing a selection in place" />
@@ -75,29 +80,26 @@ The builds are not code signed yet, so each system asks once before opening them
 
 ## Getting a model
 
-1. Install [Ollama](https://ollama.com/download) (or LM Studio, or llama.cpp's `llama-server`).
-2. Open Hearth and click the ember in the title bar. It lists what is installed and offers one-click downloads.
-3. Pick one model for the agent and, optionally, a small one for autocomplete.
+Open Hearth. The welcome screen suggests an agent model sized for your computer's memory, with its download size on the button. Click it, and that is all. A small model for autocomplete and one for search by meaning are one more click each, there or under the ember in the title bar.
 
-The agent needs a model that supports tool calling. Good starting points:
-
-| Memory in your computer | Agent and chat | Autocomplete |
-| --- | --- | --- |
-| 8 GB | `qwen3:4b` | `qwen2.5-coder:1.5b` |
-| 16 GB | `qwen3:8b` | `qwen2.5-coder:1.5b` |
-| 32 GB | `qwen3:14b` or `gpt-oss:20b` | `qwen2.5-coder:7b` |
-| 64 GB or more | `qwen3-coder:30b` | `qwen2.5-coder:7b` |
-
-Two optional models add more. The ember offers both:
+| Memory in your computer | Agent and chat |
+| --- | --- |
+| 8 GB | Qwen3 4B, 2.5 GB |
+| 16 GB | Qwen3 8B, 5.0 GB |
+| 32 GB | Qwen3 14B, 9.0 GB, or gpt-oss 20B, 12 GB |
+| 48 GB or more | Qwen3 Coder 30B, 19 GB |
 
 | For | Model | Download |
 | --- | --- | --- |
-| Search by meaning | `qwen3-embedding:0.6b` | about 640 MB |
-| Reading images for a chat model that cannot | `qwen3-vl:4b` | about 3.3 GB |
+| Autocomplete | Qwen2.5 Coder 1.5B | 1.6 GB |
+| Search by meaning | Qwen3 Embedding 0.6B | 640 MB |
+| Reading images for a chat model that cannot | Qwen3 VL 4B | 3.0 GB |
 
-`qwen3-vl:4b` also works as the chat model itself: it uses tools and sees images directly.
+Qwen3 VL 4B also works as the chat model itself: it uses tools and sees images directly.
 
-LM Studio and llama.cpp are found automatically on their default ports (`127.0.0.1:1234` and `127.0.0.1:8080`). Other servers can be added in Settings, Models.
+The models come from Hugging Face, pinned to an exact version and checked against their checksum before Hearth uses them. A download that stops continues where it left off. They are kept in Hearth's data folder, and Settings, Models lists them and frees the space.
+
+Already use [Ollama](https://ollama.com/download) or LM Studio? Hearth finds them on their default ports and lists their models next to its own, and the ember can download Ollama models too. A llama.cpp server of your own, or any other server that speaks the OpenAI API, can be added in Settings, Models.
 
 ## Shortcuts
 
@@ -118,7 +120,8 @@ In the chat, type `@` to attach a file, paste or drop an image, and use the Agen
 
 ## Privacy and safety
 
-- Hearth talks only to the model servers listed in Settings. By default those are on `127.0.0.1`. There is no telemetry and no account. The one exception is **Check for Updates**, which asks GitHub for the latest version only when you click it.
+- Models run inside Hearth. Its engine listens only on `127.0.0.1`, on a port picked at launch, answers only to Hearth through a key made for that session, and stops when Hearth quits.
+- Hearth talks only to its engine and to the model servers listed in Settings. There is no telemetry and no account. The exceptions happen only when you click: downloading a model, which comes from Hugging Face, and **Check for Updates**, which asks GitHub for the latest version.
 - The agent can only read and write inside the folder you opened. Deleted files go to the Trash or the Recycle Bin.
 - Search by meaning sends your files only to the embedding model you chose, on your own model server, and keeps its index in Hearth's data folder. Images you attach are stored there too, so past chats can show them.
 - Source control runs the `git` already on your computer. Pushing and pulling use your own Git credentials and only happen when you click them.
@@ -135,13 +138,16 @@ npm install
 npm run dev
 ```
 
+`npm install` also fetches llama.cpp's server for your computer into `engine/`, a pinned build checked against its checksum.
+
 Other scripts:
 
 | Script | What it does |
 | --- | --- |
 | `npm run build` | Builds the app into `out/` |
 | `npm start` | Runs the built app |
-| `npm test` | Unit tests (edit matching, paths, streaming, tool parsing, search ranking) |
+| `npm run engine` | Fetches llama.cpp's server again, or for other systems with `-- --target win-x64` |
+| `npm test` | Unit tests (edit matching, paths, streaming, tool parsing, search ranking, model downloads) |
 | `npm run e2e` | Drives the real app against a scripted mock Ollama server |
 | `npm run dist:mac` | Packages a `.dmg` and `.zip` into `release/` |
 | `npm run dist:win` | Packages a Windows installer into `release/` |
@@ -152,7 +158,7 @@ Every push runs the unit and end-to-end tests on Windows, macOS and Linux in Git
 
 | Folder | Role |
 | --- | --- |
-| `src/main` | Electron main process: windows, the `hearth://` protocol, file access scoped to the open folder, the terminal (node-pty), commands, the search index (`semanticIndex.ts`), and all model traffic (`llm/`) |
+| `src/main` | Electron main process: windows, the `hearth://` protocol, file access scoped to the open folder, the terminal (node-pty), commands, the search index (`semanticIndex.ts`), the built-in engine (`engine/`), and all model traffic (`llm/`) |
 | `src/preload` | The small, typed bridge the interface uses (`window.hearth`) |
 | `src/renderer` | The interface: React, Monaco, xterm.js, the agent loop (`agent/`, `state/chat.ts`), inline edit and autocomplete (`editor/`) |
 | `src/shared` | Code used on both sides: types, the forgiving edit matcher, tool call recovery, the reasoning splitter, chunking and ranking for search by meaning |
@@ -163,4 +169,4 @@ Issues and pull requests are welcome. Run `npm run typecheck && npm test` before
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). Hearth includes [llama.cpp](https://github.com/ggml-org/llama.cpp), MIT, by the ggml authors.

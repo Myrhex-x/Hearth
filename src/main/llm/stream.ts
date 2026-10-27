@@ -82,12 +82,16 @@ export async function readError(res: { text(): Promise<string>; status: number; 
 }
 
 /** Turns low-level fetch failures into something a person can act on. */
+/** baseUrl is empty for the built-in engine, which has no address of its own in Settings. */
 export function friendlyNetworkError(err: unknown, baseUrl: string): string {
   const e = err as { name?: string; message?: string; cause?: { code?: string; message?: string } }
   if (e?.name === 'AbortError') return 'Stopped'
-  if (e?.name === 'TimeoutError') return `Nothing answered at ${baseUrl} in time. Is the model server running?`
+  if (e?.name === 'TimeoutError') return baseUrl ? `Nothing answered at ${baseUrl} in time. Is the model server running?` : 'The built-in engine did not answer in time.'
   const code = e?.cause?.code
-  if (code === 'ECONNREFUSED') return `Nothing is answering at ${baseUrl}. Is the model server running?`
+  if (code === 'ECONNREFUSED' || code === 'ECONNRESET') {
+    if (!baseUrl) return 'The built-in engine stopped. Try again to restart it.'
+    if (code === 'ECONNREFUSED') return `Nothing is answering at ${baseUrl}. Is the model server running?`
+  }
   if (code === 'ENOTFOUND') return `Could not find the host in ${baseUrl}.`
   if (code === 'UND_ERR_HEADERS_TIMEOUT' || code === 'UND_ERR_BODY_TIMEOUT') return 'The model server took too long to answer.'
   return e?.cause?.message || e?.message || String(err)

@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { ArrowDownToLine, Check, ExternalLink, FolderOpen, X } from 'lucide-react'
+import { Check, ExternalLink, FolderOpen, X } from 'lucide-react'
 import type { RecentWorkspace } from '../../../shared/types'
 import { api } from '../api'
 import { relativeTime, shortModelName } from '../lib/format'
@@ -9,6 +9,8 @@ import { openFolder } from '../state/session'
 import { useSettings } from '../state/settings'
 import { useUi } from '../state/ui'
 import { useEmber } from './Hearth'
+import { GetModel } from './EngineModels'
+import { recommendedChatModel } from '../../../shared/engineCatalog'
 import { Button, Logo, Spinner, cx } from './ui'
 
 function Step({ done, busy, title, children }: { done: boolean; busy?: boolean; title: string; children: ReactNode }) {
@@ -24,24 +26,22 @@ function Step({ done, busy, title, children }: { done: boolean; busy?: boolean; 
 }
 
 function Kindling() {
-  const { statuses, models, ready, pulls, pull, refreshing, refresh } = useModels()
+  const { statuses, models, ready, refreshing, refresh, catalog, memoryBytes } = useModels()
   const settings = useSettings((s) => s.settings)
   const { state } = useEmber()
-  const server = statuses.find((s) => s.ok)
-  const ollama = statuses.find((s) => s.kind === 'ollama' && s.ok)
+  const engine = statuses.find((s) => s.kind === 'builtin' && s.ok)
+  const server = statuses.find((s) => s.kind !== 'builtin' && s.ok)
   const chat = models.find((m) => m.id === settings.chatModel)
   const auto = models.find((m) => m.id === settings.autocompleteModel)
-  const pullButton = (name: string, label: string) =>
-    ollama &&
-    (pulls[name] ? (
-      <span className="kindle-progress">
-        <Spinner size={10} /> {pulls[name].total ? `${Math.round(((pulls[name].completed ?? 0) / pulls[name].total!) * 100)}%` : 'Starting'}
-      </span>
-    ) : (
-      <Button size="sm" variant="tinted" icon={<ArrowDownToLine size={12} />} onClick={() => pull(ollama.id, name)}>
-        {label}
-      </Button>
-    ))
+  const meaning = models.find((m) => m.id === settings.embeddingModel)
+  const canGet = !!engine && catalog.length > 0
+  const memory = memoryBytes ? `${Math.round(memoryBytes / 1024 ** 3)} GB` : ''
+  const offer = (text: string, name: string, variant?: 'filled') => (
+    <span className="kindle-row">
+      <span>{text}</span>
+      <GetModel name={name} variant={variant} />
+    </span>
+  )
 
   return (
     <div className={cx('kindling', `is-${state}`)}>
@@ -51,46 +51,30 @@ function Kindling() {
           {refreshing ? 'Checking' : 'Check again'}
         </button>
       </div>
-      <Step done={!!server} busy={!ready} title="A model server on this computer">
-        {server ? (
-          <>
-            {server.name}
-            {server.version ? ` ${server.version}` : ''} is running.
-          </>
+      <Step done={!!chat} busy={!ready} title="A model for the agent">
+        {chat ? (
+          <>{shortModelName(chat.name)} will read, edit and answer.</>
+        ) : canGet ? (
+          offer(`It runs on this computer.${memory ? ` Sized for its ${memory} of memory.` : ''}`, recommendedChatModel(memoryBytes), 'filled')
         ) : (
           <>
-            Hearth works with Ollama, LM Studio and llama.cpp.{' '}
+            This copy of Hearth has no built-in engine. Start Ollama, LM Studio or llama.cpp instead.{' '}
             <button className="link" onClick={() => api.app.openExternal('https://ollama.com/download')}>
               Get Ollama <ExternalLink size={11} />
             </button>
           </>
         )}
       </Step>
-      <Step done={!!chat} title="A model for the agent">
-        {chat ? (
-          <>{shortModelName(chat.name)} will read, edit and answer.</>
-        ) : server ? (
-          <span className="kindle-row">
-            <span>A model that can use tools.</span>
-            {pullButton('qwen3:8b', 'Get qwen3:8b')}
-          </span>
-        ) : (
-          'Comes after the server.'
-        )}
-      </Step>
       <Step done={!!auto} title="A small model for autocomplete">
-        {auto ? (
-          <>{shortModelName(auto.name)} fills in as you type.</>
-        ) : server ? (
-          <span className="kindle-row">
-            <span>Optional, and quick to download.</span>
-            {pullButton('qwen2.5-coder:1.5b', 'Get qwen2.5-coder:1.5b')}
-          </span>
-        ) : (
-          'Optional.'
-        )}
+        {auto ? <>{shortModelName(auto.name)} fills in as you type.</> : canGet ? offer('Optional, and quick to download.', 'qwen2.5-coder:1.5b') : 'Optional.'}
       </Step>
-      <div className="kindling-foot">Your code and your prompts stay on this computer. Hearth only talks to the model servers listed in Settings.</div>
+      <Step done={!!meaning} title="Search by meaning">
+        {meaning ? <>{shortModelName(meaning.name)} finds code by what it does.</> : canGet ? offer('Optional. Finds code by what it does.', 'qwen3-embedding:0.6b') : 'Optional.'}
+      </Step>
+      <div className="kindling-foot">
+        Models run inside Hearth, on this computer, and your code never leaves it.{' '}
+        {server ? `${server.name} is running too: its models are listed alongside.` : 'Already use Ollama or LM Studio? Hearth finds them on its own.'}
+      </div>
       <button className="link kindling-more" onClick={() => useUi.getState().setModelsOpen(true)}>
         All models
       </button>

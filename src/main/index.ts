@@ -1,11 +1,12 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, net, protocol, shell, type IpcMainEvent, type IpcMainInvokeEvent, type WebContents } from 'electron'
 import { promises as fs, statSync } from 'fs'
-import { homedir } from 'os'
+import { homedir, totalmem } from 'os'
 import { dirname, join, normalize } from 'path'
 import { pathToFileURL } from 'url'
 import type { AppInfo, ChatRequest, CompletionRequest, ContextMenuItem, IndexStatus, MeaningResult, MessageBoxOptions, SearchOptions, SettingsPatch, WriteOptions } from '../shared/types'
 import { readAttachment, saveAttachment } from './attachments'
 import { SemanticIndex } from './semanticIndex'
+import { engineCatalog, engineInfo, engineSettingsChanged, modelsDir, removeModel, stopEngine } from './engine'
 import { abortCommand, runCommand } from './exec'
 import * as git from './git'
 import * as llm from './llm'
@@ -285,7 +286,8 @@ function registerIpc(): void {
       shell: sh.shell,
       shellName: isWin ? (sh.name === 'PowerShell 7' ? 'PowerShell 7 (pwsh)' : 'Windows PowerShell 5.1') : sh.name,
       home: homedir(),
-      isDev: !app.isPackaged
+      isDev: !app.isPackaged,
+      memoryBytes: totalmem()
     }
   })
   on('app:renderer-ready', (sender) => {
@@ -346,6 +348,7 @@ function registerIpc(): void {
     const next = updateSettings(patch)
     if (patch.theme) nativeTheme.themeSource = next.theme
     if ('embeddingModel' in patch || 'indexing' in patch) for (const e of indexes.values()) void e.index.configure(indexModel())
+    if ('contextWindow' in patch || 'keepAlive' in patch) void engineSettingsChanged()
     for (const s of windows.values()) safeSend(s.win.webContents, 'settings:changed', next)
     return next
   })
@@ -433,6 +436,13 @@ function registerIpc(): void {
     void llm.pull(providerId, name, ac.signal, (p) => safeSend(sender, 'llm:pull-progress', id, p)).finally(() => aborts.delete(id))
   })
   handle<[string, string], void>('llm:warm', (_s, modelId, keepAlive) => llm.warm(modelId, keepAlive))
+  handle('engine:catalog', () => engineCatalog())
+  handle('engine:info', () => engineInfo())
+  handle<[string], void>('engine:remove', (_s, name) => removeModel(name))
+  handle('engine:reveal', async () => {
+    await fs.mkdir(modelsDir(), { recursive: true })
+    await shell.openPath(modelsDir())
+  })
   handle<[string], void>('llm:unload', (_s, modelId) => llm.unload(modelId))
 
   // Terminal
@@ -550,5 +560,7 @@ if (!gotLock) {
   app.on('will-quit', () => {
     for (const ac of aborts.values()) ac.abort()
     killAllTerminals()
+    // The engine and its models stop with Hearth; nothing keeps running after.
+    stopEngine()
   })
 }

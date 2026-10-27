@@ -33,6 +33,8 @@ export function getSettings(): Settings {
   if (!Array.isArray(settings.providers) || settings.providers.length === 0) {
     settings.providers = structuredClone(DEFAULT_PROVIDERS)
   }
+  // Settings from before the built-in engine: add it, first.
+  if (!settings.providers.some((p) => p.kind === 'builtin')) settings.providers.unshift(structuredClone(DEFAULT_PROVIDERS[0]))
   if (!Array.isArray(settings.recent)) settings.recent = []
   cached = settings
   return settings
