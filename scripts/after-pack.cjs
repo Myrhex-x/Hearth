@@ -16,14 +16,15 @@ function walk(dir, out) {
 
 exports.default = async function afterPack(context) {
   const platform = context.electronPlatformName
-  const resources =
-    platform === 'darwin'
-      ? join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`, 'Contents', 'Resources')
-      : join(context.appOutDir, 'resources')
+  // "mas" is the Mac App Store build: an app bundle like "darwin".
+  const mac = platform === 'darwin' || platform === 'mas'
+  const resources = mac
+    ? join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`, 'Contents', 'Resources')
+    : join(context.appOutDir, 'resources')
   const engine = join(resources, 'engine')
   const server = join(engine, platform === 'win32' ? 'llama-server.exe' : 'llama-server')
   if (!existsSync(server)) {
-    const os = { darwin: 'mac', win32: 'win', linux: 'linux' }[platform]
+    const os = { darwin: 'mac', mas: 'mac', win32: 'win', linux: 'linux' }[platform]
     throw new Error(`The model engine is missing from ${resources}. Run: npm run engine -- --target ${os}-${Arch[context.arch]}`)
   }
   if (platform === 'win32') {

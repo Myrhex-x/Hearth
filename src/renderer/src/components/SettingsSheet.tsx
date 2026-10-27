@@ -150,6 +150,24 @@ function Downloaded() {
   )
 }
 
+/** Store edition: Apple's sandbox keeps ~/.gitconfig out of reach, so commits take their author from here. */
+function SourceControl() {
+  const s = useSettings((x) => x.settings)
+  const update = useSettings((x) => x.update)
+  const [name, setName] = useState(s.gitName)
+  const [email, setEmail] = useState(s.gitEmail)
+  return (
+    <Group title="Source control" note="Commits made from Hearth use this name and email.">
+      <Row label="Name">
+        <input className="field" value={name} placeholder="Ada Lovelace" spellCheck={false} onChange={(e) => setName(e.target.value)} onBlur={() => name !== s.gitName && void update({ gitName: name.trim() })} />
+      </Row>
+      <Row label="Email">
+        <input className="field" value={email} placeholder="ada@example.com" spellCheck={false} onChange={(e) => setEmail(e.target.value)} onBlur={() => email !== s.gitEmail && void update({ gitEmail: email.trim() })} />
+      </Row>
+    </Group>
+  )
+}
+
 function AddProvider() {
   const settings = useSettings((s) => s.settings)
   const update = useSettings((s) => s.update)
@@ -452,6 +470,7 @@ function Editor() {
           <Toggle checked={s.editor.minimap} onChange={(v) => void update({ editor: { minimap: v } })} />
         </Row>
       </Group>
+      {isStore && <SourceControl />}
       {!isStore && (
         <Group title="Terminal">
           <Row label="Font size">

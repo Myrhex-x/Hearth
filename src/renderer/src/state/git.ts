@@ -1,10 +1,10 @@
 import { create } from 'zustand'
 import type { ChatEvent, GitFileStatus, GitStatus } from '../../../shared/types'
 import { cleanCommitMessage, condenseDiff } from '../../../shared/gitText'
-import { api, isWin, uid } from '../api'
+import { api, isStore, isWin, uid } from '../api'
 import { supportsThinking, useModels } from './models'
 import { settingsNow } from './settings'
-import { toast } from './ui'
+import { toast, useUi } from './ui'
 import { useWorkspace } from './workspace'
 
 type Busy = 'commit' | 'push' | 'pull' | 'fetch' | 'init' | null
@@ -161,7 +161,16 @@ export const useGit = create<GitStore>((set, get) => ({
     set({ busy: 'commit' })
     let summary = ''
     const ok = await act('Commit failed', async () => {
-      summary = await api.git.commit(message, !staged)
+      try {
+        summary = await api.git.commit(message, !staged)
+      } catch (err) {
+        // The store edition cannot read ~/.gitconfig: point to where the name and email go instead.
+        if (isStore && /tell me who you are|empty ident/i.test(errorText(err))) {
+          useUi.getState().openSettings('editor')
+          throw new Error('Git needs your name and email. Add them under Source control.')
+        }
+        throw err
+      }
     })
     set({ busy: null })
     if (ok) {

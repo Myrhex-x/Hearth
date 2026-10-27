@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ArrowDown, ArrowUp, ChevronRight, ExternalLink, FileText, GitBranch, Minus, MoreHorizontal, Plus, RotateCw, Square, Undo2 } from 'lucide-react'
 import type { GitFileStatus } from '../../../shared/types'
-import { api, isMac } from '../api'
+import { api, isMac, isStore } from '../api'
 import { shortcutLabel } from '../lib/keys'
 import { basename, dirname } from '../lib/paths'
 import { useEditor } from '../state/editor'
@@ -171,11 +171,17 @@ export function ChangesPanel() {
   if (!status.available) {
     return (
       <div className="scm-empty">
-        <p>Install Git to see, review and commit your changes here.</p>
-        <button className="btn btn-plain btn-sm" onClick={() => api.app.openExternal('https://git-scm.com/downloads')}>
-          <ExternalLink size={12} />
-          <span>Get Git</span>
-        </button>
+        <p>
+          {isStore
+            ? "Source control uses Apple's command line developer tools. Install them by running xcode-select --install in Terminal, then reopen the folder."
+            : 'Install Git to see, review and commit your changes here.'}
+        </p>
+        {!isStore && (
+          <button className="btn btn-plain btn-sm" onClick={() => api.app.openExternal('https://git-scm.com/downloads')}>
+            <ExternalLink size={12} />
+            <span>Get Git</span>
+          </button>
+        )}
       </div>
     )
   }

@@ -15,7 +15,7 @@ import { http } from '../llm/http'
 // pipe closes, the watchdog stops the engine and every model it runs.
 
 // The pipe moves to fd 3 first: a background job in a script gets /dev/null as its input.
-const WATCHDOG_SH = [
+export const WATCHDOG_SH = [
   'exec 3<&0',
   '"$@" </dev/null 3<&- &',
   'server=$!',
@@ -28,20 +28,30 @@ const WATCHDOG_SH = [
   'exit "$code"'
 ].join('\n')
 
-// Windows has no sh: Hearth's own executable runs this as Node.
-const WATCHDOG_JS = `const { spawn, spawnSync } = require('child_process')
-const [command, ...args] = process.argv.slice(2)
+// Windows has no sh: Hearth's own executable runs this as Node. A killed
+// parent does not always end the pipe there, so it also checks on Hearth itself.
+export const WATCHDOG_JS = `const { spawn, spawnSync } = require('child_process')
+const [parent, command, ...args] = process.argv.slice(2)
 const child = spawn(command, args, { stdio: ['ignore', 'inherit', 'inherit'], windowsHide: true })
 let stopping = false
 function stop() {
   if (stopping) return
   stopping = true
-  if (child.pid) spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true })
+  if (child.pid && process.platform === 'win32') spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true })
+  else child.kill('SIGTERM')
   process.exit(0)
 }
 process.stdin.on('end', stop)
+process.stdin.on('close', stop)
 process.stdin.on('error', stop)
 process.stdin.resume()
+setInterval(() => {
+  try {
+    process.kill(Number(parent), 0)
+  } catch {
+    stop()
+  }
+}, 1000)
 child.on('error', (err) => {
   console.error(err.message)
   process.exit(1)
@@ -184,7 +194,7 @@ export class Router {
       const script = join(dirname(this.pidFile()), 'engine-watchdog.cjs')
       await fs.writeFile(script, WATCHDOG_JS)
       command = process.execPath
-      args = [script, l.command, ...l.args]
+      args = [script, String(process.pid), l.command, ...l.args]
       env = { ...l.env, ELECTRON_RUN_AS_NODE: '1' }
     }
     // stdin stays open for the life of Hearth: the watchdog's signal.

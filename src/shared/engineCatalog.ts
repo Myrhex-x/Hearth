@@ -205,7 +205,8 @@ export const REAL_TEST_MODELS: EngineModel[] = [
     files: [{ name: 'tinyllamas/stories260K-infill.gguf', size: 1185760, sha256: '102f2a00a5bfc56d0706467830bda9e39fa5d7df1cd55e47291dd25b4b509140', role: 'model' }],
     capabilities: ['completion', 'insert']
   },
-  { ...STORIES, name: 'stories-embed:260k', label: 'Stories 260K embeddings', files: [STORIES_FILE], capabilities: ['embedding'], options: { embeddings: true, pooling: 'mean' } }
+  // Pieces of a real project run past 512 tokens: the batch has to hold them, as for the real embedding model.
+  { ...STORIES, name: 'stories-embed:260k', label: 'Stories 260K embeddings', files: [STORIES_FILE], capabilities: ['embedding'], options: { embeddings: true, pooling: 'mean', c: 4096, b: 4096, ub: 4096 } }
 ]
 
 /** The bytes of TEST_MODEL's file, shared by the tests and their server. */

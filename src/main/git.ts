@@ -1,7 +1,9 @@
-import { spawn } from 'child_process'
+import { execFileSync, spawn } from 'child_process'
 import { existsSync } from 'fs'
 import { dirname, join } from 'path'
 import type { GitFileStatus, GitStatus } from '../shared/types'
+import { storeEdition } from './edition'
+import { getSettings } from './settings'
 import { loadShellEnv } from './shellEnv'
 
 // Thin wrapper over the git command line. Paths in and out are relative to the
@@ -15,13 +17,43 @@ interface GitResult {
 
 class GitMissingError extends Error {}
 
+let sandboxGit: string | undefined
+
+/**
+ * In Apple's sandbox, /usr/bin/git refuses to run ("xcrun cannot be used
+ * within an App Sandbox"), but the developer tools' own git works: find it
+ * the way xcrun would.
+ */
+function gitCommand(): string {
+  if (!storeEdition || process.platform !== 'darwin') return 'git'
+  if (sandboxGit === undefined) {
+    sandboxGit = '/nonexistent/git'
+    try {
+      const developer = execFileSync('/usr/bin/xcode-select', ['-p'], { encoding: 'utf8' }).trim()
+      const found = [join(developer, 'usr', 'bin', 'git'), '/Library/Developer/CommandLineTools/usr/bin/git'].find((p) => existsSync(p))
+      if (found) sandboxGit = found
+    } catch {
+      // no developer tools: reported as Git missing
+    }
+  }
+  return sandboxGit
+}
+
+/** The store edition cannot read ~/.gitconfig, so the name and email for commits come from Settings. */
+function identity(): Record<string, string> {
+  if (!storeEdition) return {}
+  const { gitName, gitEmail } = getSettings()
+  if (!gitName.trim() || !gitEmail.trim()) return {}
+  return { GIT_AUTHOR_NAME: gitName, GIT_COMMITTER_NAME: gitName, GIT_AUTHOR_EMAIL: gitEmail, GIT_COMMITTER_EMAIL: gitEmail }
+}
+
 function run(cwd: string, args: string[], opts: { input?: string; timeoutMs?: number } = {}): Promise<GitResult> {
   return new Promise((resolve, reject) => {
-    const child = spawn('git', args, {
+    const child = spawn(gitCommand(), args, {
       cwd,
       windowsHide: true,
       // Never wait on a password prompt nobody can see; credential helpers still work.
-      env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0' }
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0', ...identity() }
     })
     const out: Buffer[] = []
     const err: Buffer[] = []

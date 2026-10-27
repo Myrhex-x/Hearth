@@ -313,6 +313,9 @@ export interface Settings {
   embeddingModel: string | null
   /** Build a search-by-meaning index for the open project. */
   indexing: boolean
+  /** Store edition: who commits, since Apple's sandbox keeps ~/.gitconfig out of reach. */
+  gitName: string
+  gitEmail: string
   agent: {
     autoApplyEdits: boolean
     autoRunCommands: boolean
@@ -370,6 +373,8 @@ export const DEFAULT_SETTINGS: Settings = {
   imageModel: null,
   embeddingModel: null,
   indexing: true,
+  gitName: '',
+  gitEmail: '',
   agent: { autoApplyEdits: true, autoRunCommands: false, maxSteps: 24 },
   editor: { fontSize: 13, tabSize: 2, wordWrap: false, minimap: false, lineNumbers: true },
   terminal: { fontSize: 12 },

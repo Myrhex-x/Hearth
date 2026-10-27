@@ -10,3 +10,5 @@ playwright-report/
 .env.*
 # llama.cpp builds, fetched by scripts/fetch-engine.mjs (not src/main/engine)
 /engine/
+# App Store entitlements with the Team ID filled in (scripts/build-mas.mjs)
+build/.mas/

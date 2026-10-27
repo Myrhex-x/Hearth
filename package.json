@@ -19,7 +19,9 @@
     "dist:mac": "electron-vite build && electron-builder --mac",
     "dist:win": "electron-vite build && electron-builder --win",
     "engine": "node scripts/fetch-engine.mjs",
-    "postinstall": "node scripts/fix-pty.mjs && node scripts/fetch-engine.mjs --optional"
+    "postinstall": "node scripts/fix-pty.mjs && node scripts/fetch-engine.mjs --optional",
+    "dist:mas": "electron-vite build && node scripts/build-mas.mjs",
+    "dist:mas-local": "electron-vite build && node scripts/build-mas.mjs --local"
   },
   "dependencies": {
     "node-pty": "^1.1.0"
