@@ -46,12 +46,7 @@ On an Apple silicon Mac, with a sandboxed build signed ad hoc (`npm run dist:mas
 
 On every push, CI also builds this edition on a fresh Mac and runs it in the sandbox ([tests/e2e/mas.spec.ts](../tests/e2e/mas.spec.ts)): it has to start as the store edition, and open again after a Force Quit.
 
-Not tested yet, because it needs a real signature from the developer account:
-
-- Reopening a folder after Hearth restarts (security-scoped bookmarks).
-- The signed package and its upload.
-
-TestFlight is the place to check both, before submitting.
+On the TestFlight build of 0.4.0, signed by Apple, the four checks under "Before submitting" passed: a folder picked in the open panel reopened after a restart without asking, the agent edited a file and the commit went through, deleting moved the file to the Trash, Reveal in Finder showed the other one, and no engine was left after Quit or after a Force Quit.
 
 ## One-time setup in the developer account
 
@@ -73,13 +68,19 @@ This checks that both certificates are in the keychain, builds Hearth, fetches t
 
 Upload that package with [Transporter](https://apps.apple.com/app/transporter/id1450874784): sign in, add the package, click Deliver. Once Apple has processed it, the build shows up in App Store Connect, in TestFlight and on the version page.
 
+Or upload from Terminal with an App Store Connect API key whose `.p8` file is in `~/.appstoreconnect/private_keys/`. `--validate-app` with the same options checks the package without uploading it.
+
+```bash
+xcrun altool --upload-package release/mas-arm64/Hearth-<version>-mas-arm64.pkg --type macos --apiKey KEY_ID --apiIssuer ISSUER_ID
+```
+
 Each build is numbered with the time it was made, in UTC, like 2026.1027.1530. App Store Connect takes a Mac build only when its number is higher than every build uploaded before, whatever the version, so there is nothing to set by hand, even to upload the same version again.
 
 To try the store edition without the account, `APPLE_TEAM_ID=XXXXXXXXXX npm run dist:mas-local` builds a sandboxed app signed ad hoc in `release/mas-arm64/Hearth.app`.
 
 ## Before submitting: TestFlight
 
-Builds from `npm run dist:mas-local` share the store app's container, so on a Mac that ran them, first delete `~/Library/Containers/dev.myrhex.hearth`: TestFlight should start from nothing, like a new user.
+Builds from `npm run dist:mas-local` share the store app's container, so on a Mac that ran them, first delete what is in `~/Library/Containers/dev.myrhex.hearth`: TestFlight should start from nothing, like a new user. macOS keeps the folder itself, and the TestFlight build takes it over.
 
 Install the uploaded build with TestFlight, then:
 
@@ -92,11 +93,12 @@ Install the uploaded build with TestFlight, then:
 
 | Field | Value |
 | --- | --- |
-| Name | Hearth. If it is taken: Hearth Code Editor |
-| Subtitle | Code with AI on your Mac |
+| Name | Hearth - Local AI Code Editor |
+| Subtitle | Models that run on your Mac |
 | Category | Developer Tools, and Productivity as the second |
 | Price | Free |
-| Keywords | `code editor,ai,local,offline,private,llm,agent,autocomplete,coding,programming,git,developer` |
+| Availability | Every country except China mainland, where generative AI apps need a government permit |
+| Keywords | `offline,private,llm,agent,autocomplete,coding,programming,git,developer,ide,assistant,chat,refactor`, without the words of the name, which search already covers |
 | Support URL | https://github.com/Myrhex-x/Hearth/issues |
 | Marketing URL | https://github.com/Myrhex-x/Hearth |
 | Privacy Policy URL | https://github.com/Myrhex-x/Hearth/blob/main/PRIVACY.md |
@@ -104,16 +106,17 @@ Install the uploaded build with TestFlight, then:
 | App Privacy | Data Not Collected |
 | Encryption | Standard encryption only. `ITSAppUsesNonExemptEncryption` is already false in the build. |
 | Screenshots | [docs/app-store](app-store), five at 2880 by 1800 |
+| Release | Manual: an approved version goes live only with Release This Version |
 
 **Promotional text**
 
-> Models now come built in: download one from the welcome screen, and the agent, autocomplete and search by meaning run on your Mac.
+> Download a model in one click from the welcome screen. The agent, autocomplete and search by meaning then run on your Mac, with no account.
 
 **Description**
 
 > Hearth is a code editor for AI models that run on your own Mac. Your code, your questions and the answers never leave your computer. There is no account, and nothing to pay for.
 >
-> Models come built in. Hearth suggests one sized for your Mac's memory and downloads it in one click. Already use Ollama or LM Studio? Hearth finds their models on its own.
+> The model engine is built in. Hearth suggests a model sized for your Mac's memory and downloads it in one click. Already use Ollama or LM Studio? Hearth finds their models on its own.
 >
 > The agent reads your project, searches it and makes the change you ask for. You review every change and can undo it, file by file.
 >
@@ -129,7 +132,7 @@ Install the uploaded build with TestFlight, then:
 >
 > Requirements: a Mac with Apple silicon. 8 GB of memory runs the smallest agent model, and 16 GB or more is better. Source control needs Xcode or the Command Line Tools.
 
-**Age rating.** Answer Apple's questionnaire as it stands when you submit. Hearth has no web browsing, no sharing between users and no ads, but its chat runs open models that can write any text: say so wherever the questionnaire asks about AI or generated content.
+**Age rating.** Apple asks to count what AI chat can produce. The answers for 0.4.0: no ads, gambling, loot boxes, web access, user-generated content, messaging, social media, parental controls or age checks; none of contests, simulated gambling, weapons, medical information, graphic sexual content or prolonged violence; infrequent or mild for what an open model can write when asked: alcohol or drugs, horror, mature themes, crude language, sexual content, cartoon and realistic violence. Apple rated that 12+, which its newer scale shows as 13+.
 
 ## Notes for App Review
 
