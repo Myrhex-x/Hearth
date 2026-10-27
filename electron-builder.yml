@@ -1,0 +1,57 @@
+appId: dev.myrhex.hearth
+productName: Hearth
+copyright: Copyright 2026 Myrhex
+directories:
+  output: release
+  buildResources: build
+files:
+  - out/**
+  - resources/**
+  - package.json
+  - '!**/*.map'
+asarUnpack:
+  - '**/node_modules/node-pty/**'
+# node-pty ships prebuilt N-API binaries for macOS and Windows; nothing to rebuild.
+npmRebuild: false
+afterPack: scripts/after-pack.cjs
+mac:
+  category: public.app-category.developer-tools
+  icon: build/icon.icns
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+    - target: zip
+      arch: [arm64, x64]
+  # Ad-hoc signature so Apple silicon runs the app; see the README for Gatekeeper.
+  identity: '-'
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  darkModeSupport: true
+  artifactName: Hearth-${version}-mac-${arch}.${ext}
+dmg:
+  title: Hearth ${version}
+  artifactName: Hearth-${version}-mac-${arch}.${ext}
+win:
+  icon: build/icon.png
+  target:
+    - target: nsis
+      arch: [x64, arm64]
+  artifactName: Hearth-${version}-windows-${arch}-setup.${ext}
+nsis:
+  # One installer per architecture instead of an extra "universal" one.
+  buildUniversalInstaller: false
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Hearth
+  uninstallDisplayName: Hearth
+linux:
+  icon: build/icon.png
+  category: Development
+  target:
+    - target: AppImage
+      arch: [x64]
+  artifactName: Hearth-${version}-linux-${arch}.${ext}
+publish: null

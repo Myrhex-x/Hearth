@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: End-to-end tests
+        if: runner.os != 'Linux'
+        run: npx playwright test
+      - name: End-to-end tests (virtual display)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npx playwright test
+      - name: End-to-end tests with Windows PowerShell 5.1
+        if: runner.os == 'Windows'
+        env:
+          HEARTH_WINDOWS_POWERSHELL: '5'
+        run: npx playwright test
+      - name: Package without publishing
+        run: npx electron-builder --dir --publish never
+      - name: End-to-end tests against the packaged app
+        shell: bash
+        run: |
+          case "$RUNNER_OS" in
+            Windows) export HEARTH_EXE="$PWD/release/win-unpacked/Hearth.exe" ;;
+            macOS) export HEARTH_EXE="$(ls -d "$PWD"/release/mac*/Hearth.app | head -n1)/Contents/MacOS/Hearth" ;;
+            Linux) export HEARTH_EXE="$PWD/release/linux-unpacked/hearth" ;;
+          esac
+          echo "Testing $HEARTH_EXE"
+          if [ "$RUNNER_OS" = "Linux" ]; then xvfb-run -a npx playwright test; else npx playwright test; fi
+      - name: Upload screenshots and reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: results-${{ matrix.os }}
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore

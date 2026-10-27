@@ -1,0 +1,92 @@
+/* Hearth design tokens.
+   Two grounds: "paper" (light) and "coal" (dark), warmed slightly so the
+   ember accent belongs to them. The ember is the model: it glows when the
+   model is in memory and flickers while it writes. */
+
+:root {
+  --font-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'SF Mono', 'JetBrains Mono Variable', Menlo, 'Cascadia Mono', Consolas, monospace;
+
+  --r-xs: 5px;
+  --r-sm: 7px;
+  --r: 10px;
+  --r-lg: 13px;
+  --r-xl: 18px;
+  --pill: 999px;
+
+  --titlebar-h: 46px;
+  --statusbar-h: 26px;
+  --gutter: 7px;
+
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+
+  color-scheme: light;
+  --win: #ece8e2;
+  --win-tint: rgba(244, 239, 232, 0.62);
+  --card: #fcfbf9;
+  --card-2: #f5f2ee;
+  --card-3: #ece8e3;
+  --field: #ffffff;
+  --hover: rgba(70, 45, 20, 0.055);
+  --press: rgba(70, 45, 20, 0.09);
+  --line: rgba(70, 45, 20, 0.1);
+  --line-strong: rgba(70, 45, 20, 0.17);
+  --text: #27221d;
+  --text-2: #6f665d;
+  --text-3: #9d948a;
+  --ember: #d8642a;
+  --ember-2: #f08a4b;
+  --ember-ink: #ffffff;
+  --ember-soft: rgba(216, 100, 42, 0.11);
+  --ember-glow: rgba(240, 130, 60, 0.42);
+  --sage: #3b8a55;
+  --sage-soft: rgba(59, 138, 85, 0.11);
+  --rose: #c2463a;
+  --rose-soft: rgba(194, 70, 58, 0.09);
+  --amber: #a86f12;
+  --sky: #3a74ad;
+  --selection: rgba(216, 100, 42, 0.15);
+  --focus: rgba(216, 100, 42, 0.42);
+  --shadow-card: 0 0 0 0.5px rgba(60, 35, 10, 0.1), 0 1px 2px rgba(60, 35, 10, 0.05);
+  --shadow-pop: 0 0 0 0.5px rgba(60, 35, 10, 0.13), 0 12px 32px -8px rgba(60, 35, 10, 0.22), 0 2px 6px rgba(60, 35, 10, 0.06);
+  --shadow-sheet: 0 0 0 0.5px rgba(60, 35, 10, 0.14), 0 40px 90px -20px rgba(60, 35, 10, 0.35);
+  --scrim: rgba(40, 28, 16, 0.18);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --win: #191613;
+    --win-tint: rgba(26, 22, 19, 0.7);
+    --card: #1f1c19;
+    --card-2: #262220;
+    --card-3: #2e2a26;
+    --field: #2a2623;
+    --hover: rgba(255, 236, 214, 0.055);
+    --press: rgba(255, 236, 214, 0.09);
+    --line: rgba(255, 236, 214, 0.075);
+    --line-strong: rgba(255, 236, 214, 0.13);
+    --text: #ede6de;
+    --text-2: #a8a096;
+    --text-3: #736b61;
+    --ember: #f0894a;
+    --ember-2: #ffa970;
+    --ember-ink: #1b120c;
+    --ember-soft: rgba(240, 137, 74, 0.14);
+    --ember-glow: rgba(255, 146, 76, 0.55);
+    --sage: #8cc79b;
+    --sage-soft: rgba(140, 199, 155, 0.12);
+    --rose: #ee8b7e;
+    --rose-soft: rgba(238, 139, 126, 0.11);
+    --amber: #e5b866;
+    --sky: #88b8e4;
+    --selection: rgba(240, 137, 74, 0.2);
+    --focus: rgba(240, 137, 74, 0.5);
+    --shadow-card: 0 0 0 0.5px rgba(255, 236, 214, 0.07), 0 1px 3px rgba(0, 0, 0, 0.3);
+    --shadow-pop: 0 0 0 0.5px rgba(255, 236, 214, 0.1), 0 16px 40px -8px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.3);
+    --shadow-sheet: 0 0 0 0.5px rgba(255, 236, 214, 0.1), 0 40px 100px -20px rgba(0, 0, 0, 0.75);
+    --scrim: rgba(0, 0, 0, 0.38);
+  }
+}
