@@ -44,6 +44,8 @@ On an Apple silicon Mac, with a sandboxed build signed ad hoc (`npm run dist:mas
 - It opens normally after a Force Quit. Electron's App Store build leaves its single-instance lock behind after one, and Hearth clears it.
 - No file in the app carries the quarantine attribute, which App Store Connect refuses. [scripts/after-pack.cjs](../scripts/after-pack.cjs) removes it.
 
+On every push, CI also builds this edition on a fresh Mac and runs it in the sandbox ([tests/e2e/mas.spec.ts](../tests/e2e/mas.spec.ts)): it has to start as the store edition, and open again after a Force Quit.
+
 Not tested yet, because it needs a real signature from the developer account:
 
 - Reopening a folder after Hearth restarts (security-scoped bookmarks).
@@ -76,6 +78,8 @@ App Store Connect takes each build number once per version. To upload the same v
 To try the store edition without the account, `APPLE_TEAM_ID=XXXXXXXXXX npm run dist:mas-local` builds a sandboxed app signed ad hoc in `release/mas-arm64/Hearth.app`.
 
 ## Before submitting: TestFlight
+
+Builds from `npm run dist:mas-local` share the store app's container, so on a Mac that ran them, first delete `~/Library/Containers/dev.myrhex.hearth`: TestFlight should start from nothing, like a new user.
 
 Install the uploaded build with TestFlight, then:
 
