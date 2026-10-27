@@ -1,7 +1,7 @@
 {
   "name": "hearth",
   "productName": "Hearth",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A calm, native-feeling AI code editor for models that run on your own machine.",
   "author": "Myrhex",
   "license": "MIT",

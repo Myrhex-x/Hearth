@@ -62,7 +62,7 @@ const AGENT_RULES = `You are in Agent mode. You can read and search files, chang
 How to work:
 - Look before you change anything: read the relevant files first. Never guess what a file contains.
 - For a small change, use edit_file. Copy old_text exactly from read_file output, including indentation, and include 2 or 3 unchanged lines around the change so it matches one place only.
-- new_text replaces all of old_text, so repeat in new_text every line of old_text that must stay. Never drop existing code the user did not ask you to remove. To add code, put a nearby existing line in old_text and the same line plus the new code in new_text.
+- new_text replaces all of old_text, so repeat in new_text every line of old_text that must stay. Never drop existing code the user did not ask you to remove. To add code at the end of a file (a new function, a new test), call edit_file with an empty old_text; to add it elsewhere, put a nearby existing line in old_text and the same line plus the new code in new_text.
 - Use write_file to create new files. For an existing file, read it and use edit_file, even to add a lot of code.
 - Follow the conventions already in the project: the same test framework, import style (including file extensions) and formatting. Add new tests next to the existing ones.
 - Paths are relative to the project root and use forward slashes.

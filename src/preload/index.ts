@@ -30,7 +30,8 @@ const api: HearthApi = {
     revealPath: (rel) => ipcRenderer.send('app:reveal', rel),
     contextMenu: (items) => ipcRenderer.invoke('app:context-menu', items),
     messageBox: (options) => ipcRenderer.invoke('app:message-box', options),
-    setZoom: (level) => ipcRenderer.send('app:zoom', level)
+    setZoom: (level) => ipcRenderer.send('app:zoom', level),
+    checkUpdate: () => ipcRenderer.invoke('app:check-update')
   },
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
@@ -80,6 +81,19 @@ const api: HearthApi = {
     kill: (id) => ipcRenderer.send('term:kill', id),
     onData: (id, cb) => subscribeFor('term:data', id, cb),
     onExit: (id, cb) => subscribeFor('term:exit', id, cb)
+  },
+  git: {
+    status: () => ipcRenderer.invoke('git:status'),
+    showHead: (rel) => ipcRenderer.invoke('git:show-head', rel),
+    stage: (paths) => ipcRenderer.invoke('git:stage', paths),
+    unstage: (paths) => ipcRenderer.invoke('git:unstage', paths),
+    discard: (paths) => ipcRenderer.invoke('git:discard', paths),
+    commit: (message, all) => ipcRenderer.invoke('git:commit', message, all),
+    push: () => ipcRenderer.invoke('git:push'),
+    pull: () => ipcRenderer.invoke('git:pull'),
+    fetch: () => ipcRenderer.invoke('git:fetch'),
+    init: () => ipcRenderer.invoke('git:init'),
+    summary: () => ipcRenderer.invoke('git:summary')
   },
   exec: {
     run: (id, command, cwdRel) => ipcRenderer.invoke('exec:run', id, command, cwdRel),

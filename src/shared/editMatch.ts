@@ -4,7 +4,7 @@
 // indentation, then re-indent the replacement to match the file.
 
 export type EditResult =
-  | { ok: true; content: string; matchedBy: 'exact' | 'trailing-space' | 'indentation'; startLine: number; endLine: number }
+  | { ok: true; content: string; matchedBy: 'exact' | 'trailing-space' | 'indentation' | 'append'; startLine: number; endLine: number }
   | { ok: false; reason: 'empty' | 'not-found' | 'ambiguous'; count?: number; lines?: number[] }
 
 function detectEol(text: string): '\r\n' | '\n' {
@@ -68,7 +68,7 @@ export function applyEdit(original: string, oldText: string, newText: string): E
   const file = original.replace(/\r\n/g, '\n')
   const search = (oldText ?? '').replace(/\r\n/g, '\n')
   const replacement = (newText ?? '').replace(/\r\n/g, '\n')
-  const finish = (content: string, matchedBy: 'exact' | 'trailing-space' | 'indentation', startLine: number, endLine: number): EditResult => ({
+  const finish = (content: string, matchedBy: 'exact' | 'trailing-space' | 'indentation' | 'append', startLine: number, endLine: number): EditResult => ({
     ok: true,
     content: eol === '\r\n' ? content.replace(/\n/g, '\r\n') : content,
     matchedBy,
@@ -76,9 +76,18 @@ export function applyEdit(original: string, oldText: string, newText: string): E
     endLine
   })
 
+  // An empty old_text adds new_text at the end of the file: the most common
+  // edit (a new test, a new function) and the one small models fumble most.
   if (search.trim() === '') {
     if (file.trim() === '') return finish(replacement, 'exact', 1, replacement.split('\n').length)
-    return { ok: false, reason: 'empty' }
+    if (!replacement.trim()) return { ok: false, reason: 'empty' }
+    const body = file.replace(/\n*$/, '')
+    const added = replacement.replace(/^\n+/, '').replace(/\n*$/, '')
+    // A one-line entry (a .gitignore pattern, a dependency) goes on the next
+    // line; a block such as a function or a test gets a blank line before it.
+    const gap = added.includes('\n') ? '\n\n' : '\n'
+    const startLine = body.split('\n').length + gap.length
+    return finish(`${body}${gap}${added}\n`, 'append', startLine, startLine + added.split('\n').length - 1)
   }
 
   const exact = countOccurrences(file, search)
@@ -117,7 +126,7 @@ export function applyEdit(original: string, oldText: string, newText: string): E
 
 /** A short, model-facing explanation of why an edit failed. */
 export function editFailureMessage(path: string, r: Extract<EditResult, { ok: false }>): string {
-  if (r.reason === 'empty') return `old_text was empty, but ${path} is not empty. Copy the exact lines to replace into old_text, or use write_file to replace the whole file.`
+  if (r.reason === 'empty') return `old_text and new_text are both empty, so there is nothing to change in ${path}.`
   if (r.reason === 'ambiguous') {
     const where = r.lines?.length ? ` (lines ${r.lines.slice(0, 8).join(', ')}${r.lines.length > 8 ? ', ...' : ''})` : ''
     return `old_text matches ${r.count} places in ${path}${where}. Include the distinctive lines around the change (a function name, for example) so it matches exactly one place.`

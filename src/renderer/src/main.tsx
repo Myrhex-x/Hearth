@@ -12,6 +12,7 @@ import { startModelPolling, useModels } from './state/models'
 import { handleCloseRequest, openFolder, restoreLastFolder, startPersistence } from './state/session'
 import { initSettings, settingsNow } from './state/settings'
 import { useWorkspace } from './state/workspace'
+import { useGit } from './state/git'
 
 // Monaco cancels in-flight work (completions, hovers) by rejecting with "Canceled".
 window.addEventListener('unhandledrejection', (e) => {
@@ -38,7 +39,9 @@ async function boot(): Promise<void> {
   api.workspace.onChanged((paths) => {
     useWorkspace.getState().onFsChanged(paths)
     void syncFromDisk(paths)
+    useGit.getState().scheduleRefresh()
   })
+  window.addEventListener('focus', () => useGit.getState().scheduleRefresh(50))
   window.addEventListener('dragover', (e) => e.preventDefault())
   window.addEventListener('drop', (e) => e.preventDefault())
 

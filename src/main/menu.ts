@@ -23,6 +23,7 @@ export function buildMenu(createWindow: () => void): void {
       label: app.name,
       submenu: [
         { role: 'about' },
+        item('Check for Updates…', 'app.checkUpdates'),
         { type: 'separator' },
         item('Settings…', 'settings.open', 'Cmd+,'),
         { type: 'separator' },

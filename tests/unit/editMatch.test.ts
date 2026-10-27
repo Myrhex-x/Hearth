@@ -52,8 +52,25 @@ describe('applyEdit', () => {
     expect(r.ok && r.content).toBe('hello')
   })
 
-  it('rejects an empty old_text on a non-empty file', () => {
-    expect(applyEdit(file, '  ', 'x')).toMatchObject({ ok: false, reason: 'empty' })
+  it('appends a block after a blank line when old_text is empty', () => {
+    const r = applyEdit(file, '', 'function mul(a, b) {\n  return a * b\n}')
+    expect(r.ok && r.matchedBy).toBe('append')
+    expect(r.ok && r.content).toBe(file.replace(/\n*$/, '') + '\n\nfunction mul(a, b) {\n  return a * b\n}\n')
+    expect(r.ok && [r.startLine, r.endLine]).toEqual([9, 11])
+  })
+
+  it('appends a single line right after the last line', () => {
+    const r = applyEdit('node_modules\ndist\n', '', 'coverage')
+    expect(r.ok && r.content).toBe('node_modules\ndist\ncoverage\n')
+  })
+
+  it('keeps Windows line endings when appending', () => {
+    const r = applyEdit('a\r\nb\r\n', '', 'c\nd')
+    expect(r.ok && r.content).toBe('a\r\nb\r\n\r\nc\r\nd\r\n')
+  })
+
+  it('rejects an edit with nothing in it', () => {
+    expect(applyEdit(file, '  ', '')).toMatchObject({ ok: false, reason: 'empty' })
   })
 })
 

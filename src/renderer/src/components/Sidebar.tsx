@@ -1,16 +1,20 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
-import { CaseSensitive, ChevronRight, FilePlus2, FolderPlus, Regex, RotateCw, WholeWord } from 'lucide-react'
+import { CaseSensitive, ChevronRight, FilePlus2, Folder, FolderPlus, GitCompareArrows, Regex, RotateCw, Search, WholeWord } from 'lucide-react'
 import type { DirEntry, SearchResult } from '../../../shared/types'
 import { api, isMac, isWin } from '../api'
 import { useChat } from '../state/chat'
 import { renameOpenPath, useEditor } from '../state/editor'
 import { useUi, toast } from '../state/ui'
 import { createEntry, useWorkspace } from '../state/workspace'
+import { gitLetter, useGit } from '../state/git'
+import { ChangesPanel, useGitBadge } from './ChangesPanel'
 import { basename, dirname } from '../lib/paths'
+import { shortcutLabel } from '../lib/keys'
 import { FileIcon, IconButton, Segmented, Spinner, cx } from './ui'
 
 export function Sidebar() {
   const tab = useUi((s) => s.sidebarTab)
+  const changes = useGitBadge()
   return (
     <aside className="sidebar">
       <div className="sidebar-head">
@@ -19,13 +23,23 @@ export function Sidebar() {
           value={tab}
           onChange={(v) => useUi.setState({ sidebarTab: v })}
           options={[
-            { value: 'files', label: 'Files' },
-            { value: 'search', label: 'Search' }
+            { value: 'files', label: <Folder size={14} strokeWidth={1.8} />, title: 'Files' },
+            { value: 'search', label: <Search size={14} strokeWidth={1.9} />, title: `Search  ${shortcutLabel('mod+shift+f')}` },
+            {
+              value: 'changes',
+              title: `Changes  ${shortcutLabel('ctrl+shift+g')}`,
+              label: (
+                <>
+                  <GitCompareArrows size={14} strokeWidth={1.8} />
+                  {changes > 0 && <span className="segment-badge">{changes > 99 ? '99+' : changes}</span>}
+                </>
+              )
+            }
           ]}
         />
         {tab === 'files' && <TreeActions />}
       </div>
-      {tab === 'files' ? <FileTree /> : <SearchPanel />}
+      {tab === 'files' ? <FileTree /> : tab === 'search' ? <SearchPanel /> : <ChangesPanel />}
     </aside>
   )
 }
@@ -187,6 +201,8 @@ function FileTree() {
   const openFile = useEditor((s) => s.openFile)
   const listRef = useRef<HTMLDivElement>(null)
   const dirty = useMemo(() => new Set(tabs.filter((t) => t.dirty).map((t) => t.path)), [tabs])
+  const gitByPath = useGit((s) => s.byPath)
+  const changedDirs = useGit((s) => s.changedDirs)
 
   const rows = useMemo(() => {
     const out: Row[] = []
@@ -252,11 +268,12 @@ function FileTree() {
       items.push(<NameInput key={entry.path} initial={entry.name} depth={depth} kind={entry.kind} onDone={(v) => void finishRename(entry.path, v)} />)
     } else {
       const open = entry.kind === 'dir' && !!expanded[entry.path]
+      const g = entry.kind === 'file' ? gitByPath.get(entry.path) : undefined
       items.push(
         <div
           key={entry.path}
           data-path={entry.path}
-          className={cx('tree-row', selected === entry.path && 'is-selected', activeId === entry.path && 'is-active', entry.ignored && 'is-ignored')}
+          className={cx('tree-row', selected === entry.path && 'is-selected', activeId === entry.path && 'is-active', entry.ignored && 'is-ignored', g && `git-${g.kind}`)}
           style={{ paddingLeft: 10 + depth * 14 }}
           onClick={() => activate(entry)}
           onDoubleClick={() => entry.kind === 'file' && void openFile(entry.path, { preview: false })}
@@ -271,6 +288,8 @@ function FileTree() {
           <FileIcon path={entry.name} dir={entry.kind === 'dir'} open={open} />
           <span className="tree-name">{entry.name}</span>
           {dirty.has(entry.path) && <span className="tree-dirty" />}
+          {g && <span className="tree-git">{gitLetter(g)}</span>}
+          {entry.kind === 'dir' && !open && changedDirs.has(entry.path) && <span className="tree-git-dot" />}
         </div>
       )
     }

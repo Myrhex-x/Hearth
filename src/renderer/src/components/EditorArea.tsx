@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import { X } from 'lucide-react'
 import { api, isMac, isWin } from '../api'
 import { registerAutocomplete } from '../editor/autocomplete'
+import { attachGitGutter } from '../editor/gitGutter'
 import { formatBytes } from '../lib/format'
 import { monaco, themeName } from '../lib/monaco'
 import { basename, dirname } from '../lib/paths'
@@ -142,9 +143,11 @@ function CodeHost({ visible }: { visible: boolean }) {
       contextmenu: true,
       tabSize: useSettings.getState().settings.editor.tabSize,
       detectIndentation: true,
+      lineDecorationsWidth: 14,
       ...editorOptions(useSettings.getState().settings)
     })
     editorHost.editor = ed
+    const gutter = attachGitGutter(ed)
     if (!autocompleteRegistered) {
       autocompleteRegistered = true
       registerAutocomplete()
@@ -162,6 +165,7 @@ function CodeHost({ visible }: { visible: boolean }) {
     })
     return () => {
       sub.dispose()
+      gutter.dispose()
       ed.dispose()
       editorHost.editor = null
     }

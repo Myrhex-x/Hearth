@@ -11,7 +11,7 @@ import { basename } from '../lib/paths'
 import { activeTab, openText, writeFileContent } from './editor'
 import { modelById, supportsThinking, supportsTools, useModels } from './models'
 import { settingsNow } from './settings'
-import { toast } from './ui'
+import { toast, useUi } from './ui'
 
 export type ChatMode = 'agent' | 'ask'
 
@@ -36,6 +36,10 @@ interface ChatStore {
   stop(): void
   decide(stepId: string, decision: Decision): void
   revert(messageId: string, path?: string): Promise<void>
+  /** Runs the last request again. */
+  retry(): Promise<void>
+  /** Takes the last request back into the message box. */
+  editLast(): Promise<void>
 }
 
 const approvals = new Map<string, (d: Decision) => void>()
@@ -220,8 +224,52 @@ export const useChat = create<ChatStore>((set, get) => ({
       changes: (m.changes ?? []).map((c) => (restored.has(c.path) ? { ...c, reverted: true } : c))
     }))
     if (restored.size) toast(restored.size === 1 ? `Restored ${basename([...restored][0])}` : `Restored ${restored.size} files`, 'success')
+  },
+
+  async retry() {
+    const taken = await takeBackLastExchange()
+    if (!taken) return
+    set({ chips: taken.chips })
+    await get().send(taken.text)
+  },
+
+  async editLast() {
+    const taken = await takeBackLastExchange()
+    if (!taken) return
+    set({ draft: taken.text, chips: taken.chips })
+    useUi.getState().focusChat()
   }
 }))
+
+/**
+ * Removes the last request and its answer from the active chat, offering to
+ * undo the files that answer changed first. Returns what the person asked.
+ */
+async function takeBackLastExchange(): Promise<{ text: string; chips: ContextChip[] } | null> {
+  const state = useChat.getState()
+  if (state.runningThread) return null
+  const thread = state.threads.find((t) => t.id === state.activeId)
+  if (!thread) return null
+  const userIndex = thread.messages.map((m) => m.role).lastIndexOf('user')
+  if (userIndex < 0) return null
+  const user = thread.messages[userIndex]
+  const answer = thread.messages[userIndex + 1]
+  const live = (answer?.changes ?? []).filter((c) => !c.reverted)
+  if (answer && live.length) {
+    const choice = await api.app.messageBox({
+      type: 'question',
+      message: live.length === 1 ? `Undo the change this answer made to ${basename(live[0].path)} first?` : `Undo the changes this answer made to ${live.length} files first?`,
+      detail: 'Keeping them means the model starts again from the files as they are now.',
+      buttons: ['Undo Changes', 'Keep Changes', 'Cancel'],
+      defaultId: 0,
+      cancelId: 2
+    })
+    if (choice === 2) return null
+    if (choice === 0) await useChat.getState().revert(answer.id)
+  }
+  patchThread(thread.id, (t) => ({ ...t, updatedAt: Date.now(), messages: t.messages.slice(0, userIndex) }))
+  return { text: user.text ?? '', chips: user.chips ?? [] }
+}
 
 function patchThread(threadId: string, fn: (t: ChatThread) => ChatThread): void {
   useChat.setState((s) => ({ threads: s.threads.map((t) => (t.id === threadId ? fn(t) : t)) }))
@@ -274,29 +322,34 @@ function estimateTokens(messages: LlmMessage[]): number {
   return Math.ceil(chars / 3.4)
 }
 
-function fitToWindow(messages: LlmMessage[], budget: number): LlmMessage[] {
+/**
+ * Shrinks the conversation to fit the model's window. `keepFrom` is where the
+ * current request starts; it and everything after it always stay.
+ */
+function fitToWindow(messages: LlmMessage[], budget: number, keepFrom: number): { messages: LlmMessage[]; trimmed: boolean } {
   const out = messages.map((m) => ({ ...m }))
-  if (estimateTokens(out) <= budget) return out
+  if (estimateTokens(out) <= budget) return { messages: out, trimmed: false }
   // 1. Shorten old tool results, oldest first, keeping the latest few intact.
   const toolIdx = out.map((m, i) => (m.role === 'tool' ? i : -1)).filter((i) => i >= 0)
   for (const i of toolIdx.slice(0, Math.max(0, toolIdx.length - 3))) {
     if (out[i].content.length > 300) out[i].content = out[i].content.slice(0, 200) + '\n[older output removed to save space]'
-    if (estimateTokens(out) <= budget) return out
+    if (estimateTokens(out) <= budget) return { messages: out, trimmed: true }
   }
-  // 2. Drop the oldest exchanges, keeping the system prompt and the current turn.
-  const lastUser = out.map((m) => m.role).lastIndexOf('user')
+  // 2. Drop the oldest exchanges, keeping the system prompt and the current request.
   let firstKeep = 1
-  while (estimateTokens([out[0], ...out.slice(firstKeep)]) > budget && firstKeep < lastUser) {
+  while (estimateTokens([out[0], ...out.slice(firstKeep)]) > budget && firstKeep < keepFrom) {
     firstKeep++
-    while (firstKeep < lastUser && out[firstKeep].role !== 'user') firstKeep++
+    while (firstKeep < keepFrom && out[firstKeep].role !== 'user') firstKeep++
   }
-  return [out[0], ...out.slice(firstKeep)]
+  return { messages: [out[0], ...out.slice(firstKeep)], trimmed: true }
 }
 
-function history(thread: ChatThread, currentId: string): LlmMessage[] {
+function history(thread: ChatThread, currentId: string): { messages: LlmMessage[]; currentStart: number } {
   const out: LlmMessage[] = []
+  let currentStart = 0
   for (const m of thread.messages) {
     if (m.role === 'user') {
+      currentStart = out.length
       out.push({ role: 'user', content: m.llmContent ?? m.text ?? '' })
       continue
     }
@@ -311,7 +364,7 @@ function history(thread: ChatThread, currentId: string): LlmMessage[] {
     const reverted = (m.changes ?? []).filter((c) => c.reverted).map((c) => c.path)
     if (reverted.length && m.id !== currentId) out.push({ role: 'user', content: `(Note: I reverted your changes to ${reverted.join(', ')}.)` })
   }
-  return out
+  return { messages: out, currentStart }
 }
 
 interface StreamResult {
@@ -426,6 +479,9 @@ async function runTurn(threadId: string, messageId: string): Promise<void> {
   let lastChangeAt = -1
   let toolIndex = 0
   let nudged = false
+  let trimNoted = false
+  // Ollama gets num_ctx from us; other servers report a length or we cannot know it.
+  const contextLimit = model?.providerKind === 'ollama' ? contextWindow : (model?.contextLength ?? 0)
 
   if (!toolsEnabled && mode === 'agent') {
     patchMessage(threadId, messageId, (m) => ({
@@ -445,7 +501,20 @@ async function runTurn(threadId: string, messageId: string): Promise<void> {
     const thread = useChat.getState().threads.find((t) => t.id === threadId)
     if (!thread) return
     const budget = Math.max(2048, Math.floor(contextWindow * 0.85) - 1500)
-    const messages = fitToWindow([{ role: 'system', content: system }, ...history(thread, messageId)], budget)
+    const past = history(thread, messageId)
+    const fitted = fitToWindow([{ role: 'system', content: system }, ...past.messages], budget, past.currentStart + 1)
+    const messages = fitted.messages
+    if (contextLimit) {
+      const used = estimateTokens(messages)
+      patchMessage(threadId, messageId, (m) => ({ ...m, context: { used, limit: contextLimit } }))
+    }
+    if (fitted.trimmed && !trimNoted) {
+      trimNoted = true
+      patchMessage(threadId, messageId, (m) => ({
+        ...m,
+        parts: [...(m.parts ?? []), { kind: 'notice', text: 'The conversation is longer than the model can read at once, so older parts were shortened. Start a new chat for an unrelated task.' }]
+      }))
+    }
 
     const result = await streamOnce(threadId, messageId, {
       modelId,
@@ -528,7 +597,7 @@ async function runTurn(threadId: string, messageId: string): Promise<void> {
       appendTranscript(threadId, messageId, toolMessage(call, resultText))
       toolIndex++
       if (call.name === 'run_command' && resultText.startsWith('Exit code')) lastCommandAt = toolIndex
-      if (/^(Edited|Created|Replaced|Moved) /.test(resultText)) lastChangeAt = toolIndex
+      if (/^(Edited|Added|Created|Replaced|Moved) /.test(resultText)) lastChangeAt = toolIndex
     }
     if (step === settings.agent.maxSteps - 1) {
       patchMessage(threadId, messageId, (m) => ({

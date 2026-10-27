@@ -3,8 +3,37 @@ import { marked, type Tokens } from 'marked'
 import DOMPurify from 'dompurify'
 import { api } from '../api'
 import { monaco } from '../lib/monaco'
-import { editorHost } from '../state/editor'
+import { editorHost, useEditor } from '../state/editor'
 import { toast } from '../state/ui'
+import { useWorkspace } from '../state/workspace'
+
+const FILE_REF = /^(?:\.\/)?([\w@$.\-\/\\]+\.[A-Za-z0-9]{1,10})(?::(\d+)(?:[-:]\d+)?)?$/
+
+/** A project file matching a reference like "src/a.ts" or a unique "a.ts". */
+function findFile(files: string[], ref: string): string | null {
+  const wanted = ref.replace(/\\/g, '/').replace(/^\/+/, '')
+  if (files.includes(wanted)) return wanted
+  const suffix = '/' + wanted
+  const hits = files.filter((f) => f.endsWith(suffix))
+  return hits.length === 1 ? hits[0] : null
+}
+
+async function linkFileReferences(root: HTMLElement): Promise<void> {
+  const codes = [...root.querySelectorAll<HTMLElement>('code:not(pre code):not([data-file-checked])')]
+  if (!codes.length || !useWorkspace.getState().info) return
+  const files = useWorkspace.getState().files ?? (await useWorkspace.getState().ensureFiles())
+  for (const code of codes) {
+    code.dataset.fileChecked = '1'
+    const m = FILE_REF.exec((code.textContent ?? '').trim())
+    if (!m) continue
+    const path = findFile(files, m[1])
+    if (!path) continue
+    code.classList.add('md-file')
+    code.dataset.path = path
+    if (m[2]) code.dataset.line = m[2]
+    code.title = m[2] ? `Open ${path} at line ${m[2]}` : `Open ${path}`
+  }
+}
 
 const ALIASES: Record<string, string> = {
   ts: 'typescript',
@@ -73,6 +102,7 @@ export const Markdown = memo(function Markdown({ text, streaming }: { text: stri
 
   useEffect(() => {
     if (streaming || !ref.current) return
+    void linkFileReferences(ref.current)
     const blocks = ref.current.querySelectorAll<HTMLElement>('code[data-lang]')
     blocks.forEach((code) => {
       if (code.dataset.colored) return
@@ -96,6 +126,12 @@ export const Markdown = memo(function Markdown({ text, streaming }: { text: stri
       dangerouslySetInnerHTML={{ __html: html }}
       onClick={(e) => {
         const target = e.target as HTMLElement
+        const fileRef = target.closest('code.md-file') as HTMLElement | null
+        if (fileRef?.dataset.path) {
+          const line = fileRef.dataset.line ? Number(fileRef.dataset.line) : undefined
+          void useEditor.getState().openFile(fileRef.dataset.path, { preview: true, line })
+          return
+        }
         const link = target.closest('a[data-external]') as HTMLAnchorElement | null
         if (link) {
           e.preventDefault()

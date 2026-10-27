@@ -5,9 +5,11 @@ import { dirname, join, normalize } from 'path'
 import { pathToFileURL } from 'url'
 import type { AppInfo, ChatRequest, CompletionRequest, ContextMenuItem, MessageBoxOptions, SearchOptions, SettingsPatch, WriteOptions } from '../shared/types'
 import { abortCommand, runCommand } from './exec'
+import * as git from './git'
 import * as llm from './llm'
 import { buildMenu } from './menu'
 import { getSettings, updateSettings } from './settings'
+import { checkForUpdate } from './updates'
 import { isInside } from './paths'
 import { interactiveShell, loadShellEnv } from './shellEnv'
 import { createTerminal, killAllTerminals, killTerminal, killTerminalsOf, resizeTerminal, writeTerminal } from './terminal'
@@ -250,6 +252,7 @@ function registerIpc(): void {
     }
   })
   on<[number]>('app:zoom', (sender, level) => sender.setZoomLevel(level))
+  handle('app:check-update', () => checkForUpdate())
   handle<[ContextMenuItem[]], string | null>('app:context-menu', (sender, items) => {
     return new Promise((resolve) => {
       let settled = false
@@ -385,6 +388,23 @@ function registerIpc(): void {
     return runCommand(id, command, cwd, (chunk) => safeSend(sender, 'exec:output', id, chunk))
   })
   on<[string]>('exec:abort', (_s, id) => abortCommand(id))
+
+  // Git
+  handle('git:status', (sender) => git.gitStatus(ws(sender).root))
+  handle<[string], string | null>('git:show-head', (sender, rel) => git.gitShowHead(ws(sender).root, rel))
+  handle<[string[]], void>('git:stage', (sender, paths) => git.gitStage(ws(sender).root, paths))
+  handle<[string[]], void>('git:unstage', (sender, paths) => git.gitUnstage(ws(sender).root, paths))
+  handle<[string[]], void>('git:discard', (sender, paths) => git.gitDiscard(ws(sender).root, paths))
+  handle<[string, boolean], string>('git:commit', (sender, message, all) => git.gitCommit(ws(sender).root, message, all))
+  handle('git:push', async (sender) => {
+    const root = ws(sender).root
+    const s = await git.gitStatus(root)
+    await git.gitPush(root, s.branch, !!s.upstream)
+  })
+  handle('git:pull', (sender) => git.gitPull(ws(sender).root))
+  handle('git:fetch', (sender) => git.gitFetch(ws(sender).root))
+  handle('git:init', (sender) => git.gitInit(ws(sender).root))
+  handle('git:summary', (sender) => git.gitChangeSummary(ws(sender).root))
 }
 
 const gotLock = app.requestSingleInstanceLock()

@@ -3,6 +3,7 @@ import { Bot, Code2, Info, Paintbrush, Server, Sparkles, Trash2, X } from 'lucid
 import type { AppInfo, ProviderConfig, ProviderKind } from '../../../shared/types'
 import { api, uid } from '../api'
 import { shortModelName } from '../lib/format'
+import { checkForUpdates } from '../lib/updates'
 import { useModels } from '../state/models'
 import { useSettings } from '../state/settings'
 import { useUi, type SettingsSection } from '../state/ui'
@@ -343,6 +344,7 @@ function Editor() {
 
 function About() {
   const [info, setInfo] = useState<AppInfo | null>(null)
+  const [checking, setChecking] = useState(false)
   useEffect(() => {
     void api.app.info().then(setInfo)
   }, [])
@@ -361,7 +363,19 @@ function About() {
         <Button size="sm" onClick={() => api.app.openExternal('https://github.com/Myrhex-x/Hearth/issues')}>
           Report an issue
         </Button>
+        <Button
+          size="sm"
+          disabled={checking}
+          onClick={async () => {
+            setChecking(true)
+            await checkForUpdates()
+            setChecking(false)
+          }}
+        >
+          {checking ? 'Checking' : 'Check for updates'}
+        </Button>
       </div>
+      <p className="about-note">Hearth only contacts GitHub when you check for updates. Everything else stays between you and your model servers.</p>
     </div>
   )
 }

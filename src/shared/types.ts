@@ -197,6 +197,48 @@ export interface WriteOptions {
   encoding?: 'utf8' | 'utf16le'
 }
 
+export interface GitFileStatus {
+  /** Relative to the open folder, forward slashes. */
+  path: string
+  origPath?: string
+  /** Porcelain index (x) and work tree (y) codes: ".", "M", "A", "D", "R", "?" ... */
+  x: string
+  y: string
+  kind: 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked' | 'conflict' | 'typechange'
+  staged: boolean
+  unstaged: boolean
+}
+
+export interface GitStatus {
+  /** false when the git command is not installed. */
+  available: boolean
+  isRepo: boolean
+  branch: string | null
+  head: string | null
+  upstream: string | null
+  /** Whether any remote is configured, so pushing can work at all. */
+  hasRemote: boolean
+  ahead: number
+  behind: number
+  files: GitFileStatus[]
+  error?: string
+}
+
+export interface UpdateInfo {
+  current: string
+  latest: string | null
+  newer: boolean
+  url: string
+  error?: string
+}
+
+export interface GitChangeSummary {
+  diff: string
+  staged: boolean
+  untracked: string[]
+  recent: string[]
+}
+
 export interface ExecResult {
   exitCode: number | null
   output: string

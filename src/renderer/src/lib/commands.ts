@@ -6,7 +6,9 @@ import { closeFolder, openFolder } from '../state/session'
 import { settingsNow, useSettings } from '../state/settings'
 import { toast, useUi } from '../state/ui'
 import { useWorkspace } from '../state/workspace'
+import { useGit } from '../state/git'
 import { dirname } from './paths'
+import { checkForUpdates } from './updates'
 
 export interface Command {
   id: string
@@ -77,6 +79,23 @@ export const COMMANDS: Command[] = [
       if (!settingsNow().layout.sidebarVisible) void useSettings.getState().update({ layout: { sidebarVisible: true } })
       useUi.getState().focusSearch()
     } },
+  {
+    id: 'scm.focus',
+    title: 'Show Changes',
+    shortcut: 'ctrl+shift+g',
+    needsFolder: true,
+    run: () => {
+      if (!settingsNow().layout.sidebarVisible) void useSettings.getState().update({ layout: { sidebarVisible: true } })
+      useUi.setState({ sidebarTab: 'changes' })
+    }
+  },
+  { id: 'scm.writeMessage', title: 'Write Commit Message with the Model', needsFolder: true, run: () => {
+      useUi.setState({ sidebarTab: 'changes' })
+      void useGit.getState().writeMessage()
+    } },
+  { id: 'scm.commit', title: 'Commit', needsFolder: true, run: () => useGit.getState().commit() },
+  { id: 'scm.push', title: 'Push', needsFolder: true, run: () => useGit.getState().push() },
+  { id: 'scm.pull', title: 'Pull', needsFolder: true, run: () => useGit.getState().pull() },
   { id: 'editor.find', title: 'Find in File', shortcut: 'mod+f', run: () => editorHost.editor?.getAction('actions.find')?.run() },
   { id: 'view.sidebar', title: 'Toggle Sidebar', shortcut: 'mod+b', run: () => toggleLayout('sidebarVisible') },
   { id: 'view.chat', title: 'Toggle Chat', shortcut: 'mod+alt+b', run: () => toggleLayout('chatVisible') },
@@ -100,6 +119,7 @@ export const COMMANDS: Command[] = [
   },
   { id: 'models.open', title: 'Manage Models', run: () => useUi.getState().setModelsOpen(true) },
   { id: 'settings.open', title: 'Settings', shortcut: 'mod+,', run: () => useUi.getState().openSettings() },
+  { id: 'app.checkUpdates', title: 'Check for Updates', run: () => void checkForUpdates() },
   { id: 'theme.system', title: 'Appearance: Match System', run: () => useSettings.getState().update({ theme: 'system' }) },
   { id: 'theme.light', title: 'Appearance: Light', run: () => useSettings.getState().update({ theme: 'light' }) },
   { id: 'theme.dark', title: 'Appearance: Dark', run: () => useSettings.getState().update({ theme: 'dark' }) },

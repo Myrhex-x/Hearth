@@ -2,6 +2,7 @@ import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type React
 import {
   ArrowUp,
   Check,
+  Copy,
   ChevronDown,
   ChevronRight,
   CircleAlert,
@@ -29,7 +30,7 @@ import { useChat, type ChatMode } from '../state/chat'
 import { activeTab, useEditor } from '../state/editor'
 import { supportsTools, useModels } from '../state/models'
 import { useSettings } from '../state/settings'
-import { useUi } from '../state/ui'
+import { toast, useUi } from '../state/ui'
 import { useWorkspace } from '../state/workspace'
 import { useEmber } from './Hearth'
 import { Markdown } from './Markdown'
@@ -117,9 +118,15 @@ function Messages() {
         stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60
       }}
     >
-      {thread.messages.map((m) =>
-        m.role === 'user' ? <UserMessage key={m.id} m={m} /> : <AssistantMessage key={m.id} m={m} live={running === thread.id && !m.done} />
-      )}
+      {thread.messages.map((m, i) => {
+        const last = i === thread.messages.length - 1 || (i === thread.messages.length - 2 && m.role === 'user')
+        const idle = running !== thread.id
+        return m.role === 'user' ? (
+          <UserMessage key={m.id} m={m} editable={last && idle} />
+        ) : (
+          <AssistantMessage key={m.id} m={m} live={running === thread.id && !m.done} retryable={last && idle} />
+        )
+      })}
     </div>
   )
 }
@@ -164,9 +171,14 @@ function ChipView({ chip, onRemove, suggested }: { chip: ContextChip; onRemove?:
   )
 }
 
-const UserMessage = memo(function UserMessage({ m }: { m: ChatMessage }) {
+const UserMessage = memo(function UserMessage({ m, editable }: { m: ChatMessage; editable: boolean }) {
   return (
     <div className="msg-user">
+      {editable && (
+        <button className="msg-user-edit" title="Edit and send again" onClick={() => void useChat.getState().editLast()}>
+          <Pencil size={12} strokeWidth={1.9} />
+        </button>
+      )}
       {!!m.chips?.length && (
         <div className="msg-chips">
           {m.chips.map((c, i) => (
@@ -430,7 +442,17 @@ function Changes({ m }: { m: ChatMessage }) {
   )
 }
 
-const AssistantMessage = memo(function AssistantMessage({ m, live }: { m: ChatMessage; live: boolean }) {
+function copyAnswer(m: ChatMessage): void {
+  const text = (m.parts ?? [])
+    .filter((p): p is Extract<AssistantPart, { kind: 'text' }> => p.kind === 'text')
+    .map((p) => p.text.trim())
+    .filter(Boolean)
+    .join('\n\n')
+  void navigator.clipboard.writeText(text)
+  toast('Copied the answer')
+}
+
+const AssistantMessage = memo(function AssistantMessage({ m, live, retryable }: { m: ChatMessage; live: boolean; retryable: boolean }) {
   const parts = m.parts ?? []
   const lastText = parts.map((p) => p.kind).lastIndexOf('text')
   const waiting = live && parts.length === 0
@@ -460,21 +482,67 @@ const AssistantMessage = memo(function AssistantMessage({ m, live }: { m: ChatMe
         </div>
       )}
       {!live && <Changes m={m} />}
-      {!live && m.stats && (
-        <div className="msg-stats">
-          {[
-            shortModelName(splitModelId(m.modelId ?? '').name),
-            m.stats.tokensPerSecond ? `${m.stats.tokensPerSecond.toFixed(m.stats.tokensPerSecond < 10 ? 1 : 0)} tok/s` : '',
-            m.stats.durationMs ? formatDuration(m.stats.durationMs) : '',
-            m.stats.loadMs && m.stats.loadMs > 1500 ? `loaded in ${formatDuration(m.stats.loadMs)}` : ''
-          ]
-            .filter(Boolean)
-            .join(' · ')}
+      {!live && (m.stats || m.error) && (
+        <div className="msg-foot">
+          <span className="msg-stats">
+            {[
+              shortModelName(splitModelId(m.modelId ?? '').name),
+              m.stats?.tokensPerSecond ? `${m.stats.tokensPerSecond.toFixed(m.stats.tokensPerSecond < 10 ? 1 : 0)} tok/s` : '',
+              m.stats?.durationMs ? formatDuration(m.stats.durationMs) : '',
+              m.stats?.loadMs && m.stats.loadMs > 1500 ? `loaded in ${formatDuration(m.stats.loadMs)}` : ''
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </span>
+          <span className="msg-actions">
+            {parts.some((p) => p.kind === 'text' && p.text.trim()) && (
+              <button className="msg-action" title="Copy the answer" onClick={() => copyAnswer(m)}>
+                <Copy size={12} strokeWidth={1.9} />
+              </button>
+            )}
+            {retryable && (
+              <button className="msg-action" title="Ask again" onClick={() => void useChat.getState().retry()}>
+                <RotateCcw size={12} strokeWidth={1.9} />
+              </button>
+            )}
+          </span>
         </div>
       )}
     </div>
   )
 })
+
+function formatTokens(n: number): string {
+  return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}K` : String(n)
+}
+
+/** How full the model's context window was on the latest request of this chat. */
+function ContextMeter() {
+  const context = useChat((s) => {
+    const thread = s.threads.find((t) => t.id === s.activeId)
+    for (let i = (thread?.messages.length ?? 0) - 1; i >= 0; i--) {
+      const m = thread!.messages[i]
+      if (m.context) return m.context
+    }
+    return null
+  })
+  if (!context || !context.limit) return null
+  const ratio = Math.min(1, context.used / context.limit)
+  const r = 6
+  const circumference = 2 * Math.PI * r
+  return (
+    <span
+      className={cx('context-meter', ratio > 0.9 ? 'is-full' : ratio > 0.7 ? 'is-high' : '')}
+      title={`The latest request filled about ${formatTokens(context.used)} of the ${formatTokens(context.limit)} tokens the model reads at once.${ratio > 0.7 ? ' Start a new chat for an unrelated task.' : ''}`}
+    >
+      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+        <circle className="context-track" cx="8" cy="8" r={r} />
+        <circle className="context-fill" cx="8" cy="8" r={r} strokeDasharray={`${circumference * ratio} ${circumference}`} transform="rotate(-90 8 8)" />
+      </svg>
+      {ratio > 0.5 && <span>{Math.round(ratio * 100)}%</span>}
+    </span>
+  )
+}
 
 function ModelPicker() {
   const ref = useRef<HTMLButtonElement>(null)
@@ -647,6 +715,11 @@ function Composer() {
               setMention(null)
               return
             }
+            if (e.key === 'Escape' && running) {
+              e.preventDefault()
+              stop()
+              return
+            }
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault()
               submit()
@@ -667,6 +740,7 @@ function Composer() {
           <ModelPicker />
           {noTools && <span className="composer-warning" title="This model cannot use tools">no tools</span>}
           <span className="spacer" />
+          <ContextMeter />
           {running ? (
             <button className="send is-stop" onClick={stop} title="Stop">
               <Square size={11} fill="currentColor" strokeWidth={0} />

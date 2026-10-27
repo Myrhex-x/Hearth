@@ -116,12 +116,13 @@ export const useWorkspace = create<WorkspaceStore>((set, get) => ({
         void get().refreshBranch()
         continue
       }
+      if (p.startsWith('.git/')) continue
       dirs.add(dirname(p))
       if (children[p] !== undefined) dirs.add(p)
     }
     const targets = reloadAll ? Object.keys(children) : [...dirs].filter((d) => children[d] !== undefined)
     for (const d of targets) void get().loadDir(d)
-    if (get().files && paths.some((p) => p !== '.git/HEAD')) {
+    if (get().files && paths.some((p) => !p.startsWith('.git/'))) {
       // Keep the current list usable and refresh it quietly.
       if (refreshTimer) clearTimeout(refreshTimer)
       refreshTimer = setTimeout(() => {

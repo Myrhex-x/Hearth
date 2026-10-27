@@ -95,7 +95,7 @@ export class Workspace {
     try {
       this.watcher = watch(this.root, { recursive: true }, (_event, filename) => {
         const rel = filename ? toPosix(filename.toString()) : ''
-        if (rel && rel !== '.git/HEAD' && /(^|\/)(node_modules|\.git)(\/|$)/.test(rel)) return
+        if (rel && rel !== '.git/HEAD' && rel !== '.git/index' && /(^|\/)(node_modules|\.git)(\/|$)/.test(rel)) return
         this.pending.add(rel)
         if (rel === '.gitignore') void this.loadGitignore()
         if (!this.flushTimer) {

@@ -49,12 +49,12 @@ export const TOOL_SPECS: ToolSpec[] = [
   {
     name: 'edit_file',
     description:
-      'Change part of an existing file: old_text is replaced by new_text. old_text must be copied exactly from the file and match a single place, so include 2 or 3 unchanged lines around the change. Use an empty new_text to delete.',
+      'Change part of an existing file: old_text is replaced by new_text. old_text must be copied exactly from the file and match a single place, so include 2 or 3 unchanged lines around the change. Use an empty new_text to delete. To add code at the end of the file, leave old_text empty.',
     parameters: {
       type: 'object',
       properties: {
         path: { type: 'string', description: 'File path relative to the project root.' },
-        old_text: { type: 'string', description: 'The exact current text to replace.' },
+        old_text: { type: 'string', description: 'The exact current text to replace. Empty to add new_text at the end of the file.' },
         new_text: { type: 'string', description: 'The text to put in its place.' }
       },
       required: ['path', 'old_text', 'new_text']
@@ -285,6 +285,7 @@ async function editFile(args: Record<string, unknown>, ctx: ToolContext): Promis
   ctx.recordChange(path, cur.text, result.content)
   ctx.seen.add(path)
   ctx.update({ title: `Edited ${path}`, detail: undefined })
+  if (result.matchedBy === 'append') return `Added the code at the end of ${path}, lines ${result.startLine}-${result.endLine}.`
   const note = result.matchedBy === 'exact' ? '' : ' (matched after ignoring whitespace differences)'
   return `Edited ${path}, now lines ${result.startLine}-${result.endLine}${note}.`
 }

@@ -70,6 +70,8 @@ export interface ChatMessage {
   done?: boolean
   transcript?: LlmMessage[]
   changes?: FileChange[]
+  /** Roughly how much of the model's context window the latest request filled. */
+  context?: { used: number; limit: number }
 }
 
 export interface ChatThread {

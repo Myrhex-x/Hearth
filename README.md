@@ -33,6 +33,8 @@ Local models are smaller than cloud ones, so Hearth is built to help them succee
 - **Ask mode.** The same project awareness with read-only tools, for questions and explanations.
 - **Edit with ⌘K (Ctrl+K on Windows).** Select code, describe what you want, watch the rewrite stream in place next to the original, then keep it or undo it.
 - **Tab autocomplete.** Ghost-text suggestions from a small fill-in-the-middle model such as `qwen2.5-coder:1.5b`.
+- **Source control.** See what changed since your last commit, in the file tree, in the editor gutter and in a Changes panel with diffs. Stage, discard, commit, pull and push, and let your local model write the commit message from the diff.
+- **A chat that keeps up.** Retry an answer or edit your last request, click file names in answers to open them, and watch how full the model's context window is getting.
 - **The ember.** The mark in the title bar shows the model's state: cold, warming up, warm in memory, or writing (with tokens per second). Open it to see memory use, warm a model up before you need it, let it cool to free memory, or download new models.
 - **Any local server.** Ollama, LM Studio, llama.cpp, vLLM, Jan, or anything that speaks the OpenAI chat API, including a server on another machine of yours.
 - **A real editor.** Monaco (the editor inside VS Code) with warm Coal and Paper themes, tabs, quick open, project search, a command palette and a built-in terminal.
@@ -42,6 +44,10 @@ Local models are smaller than cloud ones, so Hearth is built to help them succee
 <p align="center">
   <img src="docs/inline-edit.png" width="49%" alt="Editing a selection in place" />
   <img src="docs/models.png" width="49%" alt="The models panel" />
+</p>
+
+<p align="center">
+  <img src="docs/changes.png" width="49%" alt="The Changes panel with a commit message written by the local model" />
 </p>
 
 ## Download
@@ -87,6 +93,7 @@ LM Studio and llama.cpp are found automatically on their default ports (`127.0.0
 | Ask about the selection in the chat | ⌘L | Ctrl+L |
 | New chat | ⇧⌘L | Ctrl+Shift+L |
 | Find in the project | ⇧⌘F | Ctrl+Shift+F |
+| Show changes (source control) | ⌃⇧G | Ctrl+Shift+G |
 | Toggle the terminal | ⌃\` | Ctrl+\` |
 | Toggle the sidebar, the chat | ⌘B, ⌥⌘B | Ctrl+B, Ctrl+Alt+B |
 | Settings | ⌘, | Ctrl+, |
@@ -95,8 +102,9 @@ In the chat, type `@` to attach a file, and use the Agent and Ask switch under t
 
 ## Privacy and safety
 
-- Hearth talks only to the model servers listed in Settings. By default those are on `127.0.0.1`. There is no telemetry and no account.
+- Hearth talks only to the model servers listed in Settings. By default those are on `127.0.0.1`. There is no telemetry and no account. The one exception is **Check for Updates**, which asks GitHub for the latest version only when you click it.
 - The agent can only read and write inside the folder you opened. Deleted files go to the Trash or the Recycle Bin.
+- Source control runs the `git` already on your computer. Pushing and pulling use your own Git credentials and only happen when you click them.
 - Commands always wait for your approval unless you turn that off in Settings, Agent. Edits are applied right away by default and can be undone from the chat; you can make them wait for approval too.
 
 ## Build from source

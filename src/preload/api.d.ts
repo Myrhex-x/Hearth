@@ -19,7 +19,10 @@ import type {
   Settings,
   SettingsPatch,
   WorkspaceInfo,
-  WriteOptions
+  WriteOptions,
+  GitStatus,
+  GitChangeSummary,
+  UpdateInfo
 } from '../shared/types'
 
 type Unsubscribe = () => void
@@ -39,6 +42,7 @@ export interface HearthApi {
     contextMenu(items: ContextMenuItem[]): Promise<string | null>
     messageBox(options: MessageBoxOptions): Promise<number>
     setZoom(level: number): void
+    checkUpdate(): Promise<UpdateInfo>
   }
   settings: {
     get(): Promise<Settings>
@@ -88,6 +92,19 @@ export interface HearthApi {
     kill(id: string): void
     onData(id: string, cb: (data: string) => void): Unsubscribe
     onExit(id: string, cb: (code: number) => void): Unsubscribe
+  }
+  git: {
+    status(): Promise<GitStatus>
+    showHead(relPath: string): Promise<string | null>
+    stage(paths: string[]): Promise<void>
+    unstage(paths: string[]): Promise<void>
+    discard(paths: string[]): Promise<void>
+    commit(message: string, all: boolean): Promise<string>
+    push(): Promise<void>
+    pull(): Promise<void>
+    fetch(): Promise<void>
+    init(): Promise<void>
+    summary(): Promise<GitChangeSummary>
   }
   exec: {
     run(requestId: string, command: string, cwdRel?: string): Promise<ExecResult>

@@ -50,6 +50,14 @@ function toolCall(name: string, args: Record<string, unknown>) {
 async function chat(body: { messages: Msg[] }, res: http.ServerResponse): Promise<void> {
   const messages = body.messages
   const system = messages.find((m) => m.role === 'system')?.content ?? ''
+  if (system.includes('You write git commit messages')) {
+    await stream(res, [
+      { message: { role: 'assistant', content: '```\nMake the answer 42 ' }, done: false },
+      { message: { role: 'assistant', content: 'and add f()\n```' }, done: false },
+      done
+    ])
+    return
+  }
   if (system.includes('code rewriting engine')) {
     await stream(res, [
       { message: { role: 'assistant', content: 'export const ' }, done: false },
@@ -65,7 +73,7 @@ async function chat(body: { messages: Msg[] }, res: http.ServerResponse): Promis
   if (tools === 2) return stream(res, [toolCall('run_command', { command: 'echo hearth-ran && echo second-step' }), done])
   await stream(res, [
     { message: { role: 'assistant', content: 'All done. ' }, done: false },
-    { message: { role: 'assistant', content: 'I changed **hello.txt**.' }, done: false },
+    { message: { role: 'assistant', content: 'I changed `hello.txt`.' }, done: false },
     done
   ])
 }

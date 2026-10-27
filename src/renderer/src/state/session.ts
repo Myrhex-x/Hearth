@@ -2,6 +2,7 @@ import type { WorkspaceInfo } from '../../../shared/types'
 import { api } from '../api'
 import type { ChatThread } from '../agent/types'
 import { useChat } from './chat'
+import { useGit } from './git'
 import { useEditor } from './editor'
 import { toast } from './ui'
 import { useWorkspace } from './workspace'
@@ -63,6 +64,8 @@ async function apply(info: WorkspaceInfo): Promise<void> {
   restoring = true
   try {
     useWorkspace.getState().setInfo(info)
+    useGit.getState().reset()
+    void useGit.getState().refresh()
     let state: PersistedState | null = null
     try {
       state = (await api.workspace.loadState()) as PersistedState | null
@@ -121,6 +124,7 @@ export async function closeFolder(): Promise<void> {
   await api.workspace.saveState(snapshot()).catch(() => {})
   if (!(await leaveCurrent())) return
   await api.workspace.close()
+  useGit.getState().reset()
   useWorkspace.getState().setInfo(null)
   useChat.getState().load([], null)
 }

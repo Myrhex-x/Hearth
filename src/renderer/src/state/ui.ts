@@ -14,7 +14,7 @@ interface UiStore {
   palette: { mode: PaletteMode; query: string } | null
   settings: SettingsSection | null
   modelsOpen: boolean
-  sidebarTab: 'files' | 'search'
+  sidebarTab: 'files' | 'search' | 'changes'
   searchFocusTick: number
   chatFocusTick: number
   dark: boolean
