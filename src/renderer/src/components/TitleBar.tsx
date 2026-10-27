@@ -1,5 +1,5 @@
 import { ChevronDown, GitBranch, PanelLeft, PanelRight, Search, SquareTerminal } from 'lucide-react'
-import { api, isMac } from '../api'
+import { api, isMac, isStore } from '../api'
 import { shortcutLabel } from '../lib/keys'
 import { closeFolder, openFolder } from '../state/session'
 import { useSettings } from '../state/settings'
@@ -67,9 +67,11 @@ export function TitleBar() {
         <HearthIndicator />
         {info && (
           <>
-            <IconButton label="Toggle terminal" shortcut="ctrl+`" active={layout.terminalVisible} onClick={() => toggle('terminalVisible')}>
-              <SquareTerminal size={16} strokeWidth={1.7} />
-            </IconButton>
+            {!isStore && (
+              <IconButton label="Toggle terminal" shortcut="ctrl+`" active={layout.terminalVisible} onClick={() => toggle('terminalVisible')}>
+                <SquareTerminal size={16} strokeWidth={1.7} />
+              </IconButton>
+            )}
             <IconButton label="Toggle chat" shortcut="mod+alt+b" active={layout.chatVisible} onClick={() => toggle('chatVisible')} className={cx(!layout.chatVisible && 'dim')}>
               <PanelRight size={16} strokeWidth={1.7} />
             </IconButton>

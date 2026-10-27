@@ -1,6 +1,8 @@
 export const api = window.hearth
 export const isMac = api.platform === 'darwin'
 export const isWin = api.platform === 'win32'
+/** The Mac App Store edition: sandboxed, so no terminal, no commands and no update check of its own. */
+export const isStore = api.edition === 'store'
 
 let seq = 0
 export function uid(prefix = 'id'): string {

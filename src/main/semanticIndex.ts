@@ -122,13 +122,16 @@ export class SemanticIndex {
     this.dirtyTimer = null
   }
 
-  dispose(): void {
+  /** Resolves once the last save is on disk. */
+  dispose(): Promise<void> {
     this.disposed = true
     this.stop()
     if (this.saveTimer) {
       clearTimeout(this.saveTimer)
-      void this.save()
+      this.saveTimer = null
+      return this.save()
     }
+    return this.saving
   }
 
   async search(query: string, k = 8, under?: string): Promise<MeaningResult[]> {

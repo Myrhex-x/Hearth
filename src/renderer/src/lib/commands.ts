@@ -1,4 +1,4 @@
-import { api, isMac, isWin } from '../api'
+import { api, isMac, isStore, isWin } from '../api'
 import { startInlineEdit } from '../editor/inlineEdit'
 import { useChat } from '../state/chat'
 import { activeTab, editorHost, useEditor } from '../state/editor'
@@ -55,6 +55,9 @@ function newFile(): void {
   useUi.setState({ sidebarTab: 'files' })
   ws.startEdit({ kind: 'new-file', parent })
 }
+
+/** What the store edition does not have. */
+const STORE_LEAVES_OUT = new Set(['view.terminal', 'terminal.new', 'app.checkUpdates'])
 
 export const COMMANDS: Command[] = [
   { id: 'workspace.open', title: 'Open Folder…', shortcut: 'mod+o', run: () => openFolder() },
@@ -158,7 +161,7 @@ export const COMMANDS: Command[] = [
         { id: 'view.zoomOut', title: 'Zoom Out', shortcut: 'mod+-', run: () => api.app.setZoom(--zoom) },
         { id: 'view.zoomReset', title: 'Actual Size', shortcut: 'mod+0', run: () => api.app.setZoom((zoom = 0)) }
       ])
-]
+].filter((c) => !isStore || !STORE_LEAVES_OUT.has(c.id))
 
 export function runCommand(id: string): void {
   const cmd = COMMANDS.find((c) => c.id === id)

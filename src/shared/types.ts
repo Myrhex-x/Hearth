@@ -145,6 +145,8 @@ export interface RecentWorkspace {
   root: string
   name: string
   openedAt: number
+  /** Store edition: the sandbox's permission to open it again, from the open dialog. Stays in the main process. */
+  bookmark?: string
 }
 
 export interface DirEntry {

@@ -18,6 +18,7 @@ function subscribeFor<T>(channel: string, id: string, cb: (payload: T) => void):
 
 const api: HearthApi = {
   platform: process.platform as HearthApi['platform'],
+  edition: ipcRenderer.sendSync('app:edition') as HearthApi['edition'],
   app: {
     info: () => ipcRenderer.invoke('app:info'),
     onMenuCommand: (cb) => subscribe<[string]>('menu:command', cb),
@@ -39,7 +40,7 @@ const api: HearthApi = {
     onChanged: (cb) => subscribe('settings:changed', cb)
   },
   workspace: {
-    pickFolder: () => ipcRenderer.invoke('ws:pick'),
+    pickFolder: (defaultPath) => ipcRenderer.invoke('ws:pick', defaultPath),
     open: (root) => ipcRenderer.invoke('ws:open', root),
     close: () => ipcRenderer.invoke('ws:close'),
     current: () => ipcRenderer.invoke('ws:current'),

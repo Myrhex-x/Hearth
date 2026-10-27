@@ -117,7 +117,14 @@ export async function openFolder(root?: string): Promise<void> {
     }
     await apply(info)
   } catch (err) {
-    toast(`Could not open the folder: ${(err as Error).message}`, 'error')
+    const message = (err as Error).message
+    // Store edition: the sandbox lets Hearth back into a folder once the person picks it again.
+    if (root && message.includes('NEEDS_PERMISSION')) {
+      const info = await api.workspace.pickFolder(root).catch(() => null)
+      if (info) await apply(info)
+      return
+    }
+    toast(`Could not open the folder: ${message}`, 'error')
   }
 }
 

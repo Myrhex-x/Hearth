@@ -13,6 +13,7 @@ import { Welcome } from './components/Welcome'
 import { cx } from './components/ui'
 import { useSettings } from './state/settings'
 import { useWorkspace } from './state/workspace'
+import { isStore } from './api'
 
 function clamp(v: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, v))
@@ -23,12 +24,13 @@ export function App() {
   const layout = useSettings((s) => s.settings.layout)
   const { preview, update } = useSettings.getState()
   const start = useRef({ sidebar: 0, chat: 0, terminal: 0 })
-  const [terminalMounted, setTerminalMounted] = useState(layout.terminalVisible)
+  // The store edition has no terminal: Apple's sandbox would keep a shell away from the user's tools.
+  const [terminalMounted, setTerminalMounted] = useState(layout.terminalVisible && !isStore)
 
   // Shells live as long as the folder is open, even while the panel is hidden.
   useEffect(() => {
     if (!info) setTerminalMounted(false)
-    else if (layout.terminalVisible) setTerminalMounted(true)
+    else if (layout.terminalVisible && !isStore) setTerminalMounted(true)
   }, [info, layout.terminalVisible])
 
   const remember = () => {

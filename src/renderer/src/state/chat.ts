@@ -5,7 +5,7 @@ import { isLooping } from '../../../shared/loop'
 import { announcesAction } from '../../../shared/intent'
 import { STANDS_OUT } from '../../../shared/semantic'
 import { extractToolCalls } from '../../../shared/toolText'
-import { api, uid } from '../api'
+import { api, isStore, uid } from '../api'
 import { buildSystemPrompt } from '../agent/prompt'
 import { describeCall, executeTool, READ_ONLY_TOOLS, TOOL_NAMES, TOOL_SPECS, type Decision } from '../agent/tools'
 import type { AssistantPart, ChatMessage, ChatThread, ContextChip, FileChange, ImageAttachment, ToolStep } from '../agent/types'
@@ -649,7 +649,7 @@ async function runTurn(threadId: string, messageId: string): Promise<void> {
   const toolsEnabled = supportsTools(modelId)
   const meaning = meaningAvailable()
   const tools: ToolSpec[] | undefined = toolsEnabled
-    ? TOOL_SPECS.filter((t) => (mode === 'agent' || READ_ONLY_TOOLS.has(t.name)) && (t.name !== 'search_meaning' || meaning))
+    ? TOOL_SPECS.filter((t) => (mode === 'agent' || READ_ONLY_TOOLS.has(t.name)) && (t.name !== 'search_meaning' || meaning) && (t.name !== 'run_command' || !isStore))
     : undefined
   const allowed = new Set((tools ?? []).map((t) => t.name))
   const system = await buildSystemPrompt(mode, toolsEnabled, meaning)

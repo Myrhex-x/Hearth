@@ -93,8 +93,10 @@ async function install(target) {
   }
   const scratch = await fs.mkdtemp(join(tmpdir(), 'hearth-engine-'))
   try {
-    // bsdtar on macOS and Windows reads zip and tar.gz alike; Linux only needs tar.gz.
-    execFileSync('tar', ['-xf', archive, '-C', scratch])
+    // bsdtar on macOS and Windows reads zip and tar.gz alike; Linux only needs tar.gz. On
+    // Windows, Git Bash puts GNU tar first, which takes "D:" for a host and cannot read zip.
+    const tar = process.platform === 'win32' ? join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe') : 'tar'
+    execFileSync(tar, ['-xf', archive, '-C', scratch])
     const top = (await fs.readdir(scratch, { withFileTypes: true })).find((d) => d.isDirectory())
     const from = top ? join(scratch, top.name) : scratch
     await fs.rm(out, { recursive: true, force: true })

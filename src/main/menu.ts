@@ -13,7 +13,8 @@ function item(label: string, command: string, accelerator?: string): MenuItemCon
   return { label, accelerator, registerAccelerator: false, click: () => send(command) }
 }
 
-export function buildMenu(createWindow: () => void): void {
+/** The store edition leaves out what it does not have: its own update check and the terminal. */
+export function buildMenu(createWindow: () => void, store = false): void {
   if (process.platform !== 'darwin') {
     Menu.setApplicationMenu(null)
     return
@@ -23,7 +24,7 @@ export function buildMenu(createWindow: () => void): void {
       label: app.name,
       submenu: [
         { role: 'about' },
-        item('Check for Updates…', 'app.checkUpdates'),
+        ...(store ? [] : [item('Check for Updates…', 'app.checkUpdates')]),
         { type: 'separator' },
         item('Settings…', 'settings.open', 'Cmd+,'),
         { type: 'separator' },
@@ -74,7 +75,7 @@ export function buildMenu(createWindow: () => void): void {
         { type: 'separator' },
         item('Toggle Sidebar', 'view.sidebar', 'Cmd+B'),
         item('Toggle Chat', 'view.chat', 'Cmd+Alt+B'),
-        item('Toggle Terminal', 'view.terminal', 'Ctrl+`'),
+        ...(store ? [] : [item('Toggle Terminal', 'view.terminal', 'Ctrl+`')]),
         { type: 'separator' },
         { role: 'resetZoom' },
         { role: 'zoomIn' },

@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Bot, Code2, Info, Paintbrush, ScanSearch, Server, Sparkles, Trash2, X } from 'lucide-react'
 import type { AppInfo, ProviderConfig, ProviderKind } from '../../../shared/types'
-import { api, uid } from '../api'
+import { api, isStore, uid } from '../api'
 import { formatBytes, shortModelName } from '../lib/format'
 import { checkForUpdates } from '../lib/updates'
 import { chatModels, embeddingModels, useModels, visionModels } from '../state/models'
@@ -335,9 +335,11 @@ function Agent() {
       <Row label="Apply edits without asking" detail="When off, each edit waits for you to apply or decline it.">
         <Toggle checked={s.agent.autoApplyEdits} onChange={(v) => void update({ agent: { autoApplyEdits: v } })} />
       </Row>
-      <Row label="Run commands without asking" detail="Off is safer: commands can change files outside the project or reach the network.">
-        <Toggle checked={s.agent.autoRunCommands} onChange={(v) => void update({ agent: { autoRunCommands: v } })} />
-      </Row>
+      {!isStore && (
+        <Row label="Run commands without asking" detail="Off is safer: commands can change files outside the project or reach the network.">
+          <Toggle checked={s.agent.autoRunCommands} onChange={(v) => void update({ agent: { autoRunCommands: v } })} />
+        </Row>
+      )}
       <Row label="Steps per request" detail="The agent pauses after this many model calls.">
         <Stepper value={s.agent.maxSteps} min={4} max={80} step={4} onChange={(v) => void update({ agent: { maxSteps: v } })} />
       </Row>
@@ -450,11 +452,13 @@ function Editor() {
           <Toggle checked={s.editor.minimap} onChange={(v) => void update({ editor: { minimap: v } })} />
         </Row>
       </Group>
-      <Group title="Terminal">
-        <Row label="Font size">
-          <Stepper value={s.terminal.fontSize} min={9} max={22} onChange={(v) => void update({ terminal: { fontSize: v } })} suffix=" pt" />
-        </Row>
-      </Group>
+      {!isStore && (
+        <Group title="Terminal">
+          <Row label="Font size">
+            <Stepper value={s.terminal.fontSize} min={9} max={22} onChange={(v) => void update({ terminal: { fontSize: v } })} suffix=" pt" />
+          </Row>
+        </Group>
+      )}
     </>
   )
 }
@@ -480,19 +484,25 @@ function About() {
         <Button size="sm" onClick={() => api.app.openExternal('https://github.com/Myrhex-x/Hearth/issues')}>
           Report an issue
         </Button>
-        <Button
-          size="sm"
-          disabled={checking}
-          onClick={async () => {
-            setChecking(true)
-            await checkForUpdates()
-            setChecking(false)
-          }}
-        >
-          {checking ? 'Checking' : 'Check for updates'}
-        </Button>
+        {!isStore && (
+          <Button
+            size="sm"
+            disabled={checking}
+            onClick={async () => {
+              setChecking(true)
+              await checkForUpdates()
+              setChecking(false)
+            }}
+          >
+            {checking ? 'Checking' : 'Check for updates'}
+          </Button>
+        )}
       </div>
-      <p className="about-note">Hearth only contacts GitHub when you check for updates. Everything else stays between you and your model servers.</p>
+      <p className="about-note">
+        {isStore
+          ? 'Hearth contacts Hugging Face only when you download a model. Everything else stays on this computer.'
+          : 'Hearth contacts Hugging Face only when you download a model, and GitHub only when you check for updates. Everything else stays on this computer.'}
+      </p>
     </div>
   )
 }

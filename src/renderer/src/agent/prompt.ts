@@ -1,5 +1,5 @@
 import type { AppInfo, DirEntry } from '../../../shared/types'
-import { api } from '../api'
+import { api, isStore } from '../api'
 import { activeTab, editorHost } from '../state/editor'
 import { useWorkspace } from '../state/workspace'
 
@@ -58,7 +58,7 @@ function focusContext(): string {
   return line + '.'
 }
 
-const AGENT_RULES = `You are in Agent mode. You can read and search files, change them, and run commands with your tools.
+const AGENT_RULES = `You are in Agent mode. You can read and search files, change them${isStore ? '' : ', and run commands'} with your tools.
 How to work:
 - Look before you change anything: read the relevant files first. Never guess what a file contains.
 - For a small change, use edit_file. Copy old_text exactly from read_file output, including indentation, and include 2 or 3 unchanged lines around the change so it matches one place only.
@@ -66,9 +66,13 @@ How to work:
 - Use write_file to create new files. For an existing file, read it and use edit_file, even to add a lot of code.
 - Follow the conventions already in the project: the same test framework, import style (including file extensions) and formatting. Add new tests next to the existing ones.
 - Paths are relative to the project root and use forward slashes.
-- Use run_command for tests, builds, linters and package installs. Pick commands that finish on their own; never start a dev server or a watcher.
+${
+  isStore
+    ? '- You cannot run commands here. When a change should be checked, end your summary with the command the user should run (tests, build or linter).'
+    : '- Use run_command for tests, builds, linters and package installs. Pick commands that finish on their own; never start a dev server or a watcher.'
+}
 - Do one step at a time and check results. If a tool fails, read the error and fix your call.
-- If tests or a build fail after your change, read the output, fix the cause in the code or the test, and run them again. Do not suggest new tools or frameworks the project does not use.
+- If tests or a build fail after your change, read the output, fix the cause in the code or the test, and ${isStore ? 'ask the user to run them again' : 'run them again'}. Do not suggest new tools or frameworks the project does not use.
 - When the task is done, stop calling tools and reply with a short summary of what changed. Do not paste whole files into the reply.`
 
 const ASK_RULES = `You are in Ask mode. You can read and search files with your tools, but you cannot change files or run commands.
@@ -91,7 +95,7 @@ export async function buildSystemPrompt(mode: 'agent' | 'ask', toolsEnabled: boo
     [
       'Environment:',
       `- Operating system: ${info.osName} (${info.arch})`,
-      `- Shell used by run_command: ${info.shellName}${shellNote}`,
+      isStore ? '' : `- Shell used by run_command: ${info.shellName}${shellNote}`,
       ws ? `- Project folder: ${ws.root}` : '',
       `- Today: ${new Date().toISOString().slice(0, 10)}`
     ]

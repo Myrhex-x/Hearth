@@ -32,6 +32,8 @@ type Unsubscribe = () => void
 
 export interface HearthApi {
   platform: Platform
+  /** "store" for the Mac App Store edition, which runs in Apple's sandbox. */
+  edition: 'store' | 'direct'
   app: {
     info(): Promise<AppInfo>
     onMenuCommand(cb: (command: string) => void): Unsubscribe
@@ -53,7 +55,7 @@ export interface HearthApi {
     onChanged(cb: (settings: Settings) => void): Unsubscribe
   }
   workspace: {
-    pickFolder(): Promise<WorkspaceInfo | null>
+    pickFolder(defaultPath?: string): Promise<WorkspaceInfo | null>
     open(root: string): Promise<WorkspaceInfo>
     close(): Promise<void>
     current(): Promise<WorkspaceInfo | null>

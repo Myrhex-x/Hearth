@@ -54,7 +54,7 @@ async function interruptedRun(): Promise<void> {
   await until(() => status?.state === 'error')
   expect(status!.chunks).toBe(24)
   expect(status!.files).toBe(0)
-  index.dispose()
+  await index.dispose()
   await until(() => existsSync(join(paths.userData, 'index')) && savedPieces())
 }
 
@@ -80,7 +80,7 @@ describe('SemanticIndex', () => {
     expect(status!.chunks).toBe(PIECES)
     const found = await index.search('line', 50)
     expect(new Set(found.map((r) => r.start)).size).toBe(found.length)
-    index.dispose()
+    await index.dispose()
   })
 
   it('forgets the half-indexed pieces of a file deleted in the meantime', async () => {
@@ -92,6 +92,6 @@ describe('SemanticIndex', () => {
     await index.configure(MODEL)
     await until(() => status?.state === 'ready')
     expect(status!.chunks).toBe(0)
-    index.dispose()
+    await index.dispose()
   })
 })

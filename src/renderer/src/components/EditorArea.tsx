@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { X } from 'lucide-react'
-import { api, isMac, isWin } from '../api'
+import { api, isMac, isStore, isWin } from '../api'
 import { registerAutocomplete } from '../editor/autocomplete'
 import { attachGitGutter } from '../editor/gitGutter'
 import { formatBytes } from '../lib/format'
@@ -271,7 +271,7 @@ function EmptyEditor() {
     ['Ask about the code', 'mod+l'],
     ['Edit the selection with the model', 'mod+k'],
     ['Show every command', 'mod+shift+p'],
-    ['Open the terminal', 'ctrl+`']
+    ...(isStore ? [] : [['Open the terminal', 'ctrl+`'] as [string, string]])
   ]
   return (
     <div className="editor-empty">

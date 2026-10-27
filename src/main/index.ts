@@ -7,6 +7,7 @@ import type { AppInfo, ChatRequest, CompletionRequest, ContextMenuItem, IndexSta
 import { readAttachment, saveAttachment } from './attachments'
 import { SemanticIndex } from './semanticIndex'
 import { engineCatalog, engineInfo, engineSettingsChanged, modelsDir, removeModel, stopEngine } from './engine'
+import { NEEDS_PERMISSION, storeEdition } from './edition'
 import { abortCommand, runCommand } from './exec'
 import * as git from './git'
 import * as llm from './llm'
@@ -38,6 +39,8 @@ interface WindowState {
   opening: Promise<unknown> | null
   allowClose: boolean
   rendererReady: boolean
+  /** Ends the sandbox's access to the open folder (store edition). */
+  releaseAccess: (() => void) | null
 }
 
 const windows = new Map<number, WindowState>()
@@ -84,7 +87,7 @@ function detachIndex(state: WindowState, id = state.win.webContents.id): void {
   if (!entry) return
   entry.windows.delete(id)
   if (!entry.windows.size) {
-    entry.index.dispose()
+    void entry.index.dispose()
     indexes.delete(key)
   }
 }
@@ -167,7 +170,7 @@ function createWindow(folder?: string): BrowserWindow {
     }
   })
   const id = win.webContents.id
-  const state: WindowState = { win, workspace: null, opening: null, allowClose: false, rendererReady: false }
+  const state: WindowState = { win, workspace: null, opening: null, allowClose: false, rendererReady: false, releaseAccess: null }
   windows.set(id, state)
   if (folder) state.opening = openWorkspace(win.webContents, folder).catch(() => null)
 
@@ -179,6 +182,7 @@ function createWindow(folder?: string): BrowserWindow {
   })
   win.on('closed', () => {
     detachIndex(state, id)
+    state.releaseAccess?.()
     state.workspace?.dispose()
     windows.delete(id)
   })
@@ -253,19 +257,43 @@ function safeSend(target: WebContents, channel: string, ...args: unknown[]): voi
   if (!target.isDestroyed()) target.send(channel, ...args)
 }
 
-async function openWorkspace(sender: WebContents, root: string) {
+/** In the store edition, a folder is reachable through the bookmark the open dialog gave for it. */
+function startAccess(root: string, bookmark?: string): { bookmark?: string; release: (() => void) | null } {
+  if (!storeEdition) return { release: null }
+  const saved = bookmark ?? getSettings().recent.find((r) => r.root === root)?.bookmark
+  if (!saved) return { release: null }
+  try {
+    return { bookmark: saved, release: app.startAccessingSecurityScopedResource(saved) as () => void }
+  } catch {
+    // a regular build trying the store edition has no bookmarks
+    return { bookmark: saved, release: null }
+  }
+}
+
+async function openWorkspace(sender: WebContents, root: string, bookmark?: string) {
   const state = stateOf(sender)
+  const access = startAccess(root, bookmark)
   const workspace: Workspace = new Workspace(root, (paths) => {
     safeSend(sender, 'ws:changed', paths)
     indexes.get(indexKey(workspace.root))?.index.markDirty(paths)
   })
-  await workspace.init()
+  try {
+    await workspace.init()
+  } catch (err) {
+    access.release?.()
+    // The sandbox only lets Hearth into folders the person picked: ask for this one again.
+    if (storeEdition) throw new Error(`${NEEDS_PERMISSION}: Hearth needs your permission to open this folder.`)
+    throw err
+  }
   detachIndex(state)
+  state.releaseAccess?.()
+  state.releaseAccess = access.release
   state.workspace?.dispose()
   state.workspace = workspace
   attachIndex(state)
   const settings = getSettings()
-  const recent = [{ root, name: workspace.name, openedAt: Date.now() }, ...settings.recent.filter((r) => r.root !== root)].slice(0, 12)
+  const entry = { root, name: workspace.name, openedAt: Date.now(), ...(access.bookmark ? { bookmark: access.bookmark } : {}) }
+  const recent = [entry, ...settings.recent.filter((r) => r.root !== root)].slice(0, 12)
   updateSettings({ recent, lastWorkspace: root })
   state.win.setTitle(workspace.name)
   if (isMac) state.win.setRepresentedFilename(root)
@@ -289,6 +317,9 @@ function registerIpc(): void {
       isDev: !app.isPackaged,
       memoryBytes: totalmem()
     }
+  })
+  ipcMain.on('app:edition', (e) => {
+    e.returnValue = storeEdition ? 'store' : 'direct'
   })
   on('app:renderer-ready', (sender) => {
     stateOf(sender).rendererReady = true
@@ -354,17 +385,25 @@ function registerIpc(): void {
   })
 
   // Workspace
-  handle('ws:pick', async (sender) => {
+  handle<[string | undefined], unknown>('ws:pick', async (sender, defaultPath) => {
     const win = BrowserWindow.fromWebContents(sender)
-    const opts = { properties: ['openDirectory' as const, 'createDirectory' as const], title: 'Open a project folder' }
+    const opts = {
+      properties: ['openDirectory' as const, 'createDirectory' as const],
+      title: 'Open a project folder',
+      defaultPath,
+      // Lets the store edition open the folder again after a restart.
+      securityScopedBookmarks: storeEdition
+    }
     const res = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts)
     if (res.canceled || !res.filePaths[0]) return null
-    return openWorkspace(sender, res.filePaths[0])
+    return openWorkspace(sender, res.filePaths[0], res.bookmarks?.[0] || undefined)
   })
   handle<[string], unknown>('ws:open', (sender, root) => openWorkspace(sender, root))
   handle('ws:close', (sender) => {
     const state = stateOf(sender)
     detachIndex(state)
+    state.releaseAccess?.()
+    state.releaseAccess = null
     state.workspace?.dispose()
     state.workspace = null
     state.win.setTitle('Hearth')
@@ -379,8 +418,9 @@ function registerIpc(): void {
   })
   handle('ws:recent', async () => {
     const recent = getSettings().recent
-    const alive = await Promise.all(recent.map((r) => existsQuickly(r.root)))
-    return recent.filter((_, i) => alive[i])
+    // The sandbox cannot look at a folder before its bookmark is used, so those stay listed.
+    const alive = await Promise.all(recent.map((r) => (storeEdition && r.bookmark) || existsQuickly(r.root)))
+    return recent.filter((_, i) => alive[i]).map(({ bookmark: _, ...r }) => r)
   })
   handle<[string], void>('ws:forget-recent', (_s, root) => {
     updateSettings({ recent: getSettings().recent.filter((r) => r.root !== root) })
@@ -447,6 +487,7 @@ function registerIpc(): void {
 
   // Terminal
   handle<[{ cols: number; rows: number }], unknown>('term:create', (sender, opts) => {
+    if (storeEdition) return { error: 'This edition of Hearth has no terminal.' }
     const root = stateOf(sender).workspace?.root ?? homedir()
     return createTerminal(sender, root, opts.cols, opts.rows)
   })
@@ -543,7 +584,7 @@ if (!gotLock) {
     void loadShellEnv()
     registerProtocol()
     registerIpc()
-    buildMenu(() => createWindow())
+    buildMenu(() => createWindow(), storeEdition)
     createWindow(launchFolder)
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow()
