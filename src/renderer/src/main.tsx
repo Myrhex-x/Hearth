@@ -13,6 +13,7 @@ import { handleCloseRequest, openFolder, restoreLastFolder, startPersistence } f
 import { initSettings, settingsNow } from './state/settings'
 import { useWorkspace } from './state/workspace'
 import { useGit } from './state/git'
+import { startMeaningUpdates } from './state/meaning'
 
 // Monaco cancels in-flight work (completions, hovers) by rejecting with "Canceled".
 window.addEventListener('unhandledrejection', (e) => {
@@ -32,6 +33,7 @@ async function boot(): Promise<void> {
   installShortcuts()
   startPersistence()
   startModelPolling()
+  startMeaningUpdates()
   void useModels.getState().refresh()
 
   api.app.onMenuCommand((command) => runCommand(command))

@@ -7,6 +7,7 @@ import { settingsNow, useSettings } from '../state/settings'
 import { toast, useUi } from '../state/ui'
 import { useWorkspace } from '../state/workspace'
 import { useGit } from '../state/git'
+import { useMeaning } from '../state/meaning'
 import { dirname } from './paths'
 import { checkForUpdates } from './updates'
 
@@ -96,6 +97,17 @@ export const COMMANDS: Command[] = [
   { id: 'scm.commit', title: 'Commit', needsFolder: true, run: () => useGit.getState().commit() },
   { id: 'scm.push', title: 'Push', needsFolder: true, run: () => useGit.getState().push() },
   { id: 'scm.pull', title: 'Pull', needsFolder: true, run: () => useGit.getState().pull() },
+  {
+    id: 'search.meaning',
+    title: 'Search by Meaning',
+    needsFolder: true,
+    run: () => {
+      if (!settingsNow().layout.sidebarVisible) void useSettings.getState().update({ layout: { sidebarVisible: true } })
+      useUi.setState({ sidebarTab: 'search', searchMode: 'meaning' })
+      useUi.getState().focusSearch()
+    }
+  },
+  { id: 'index.rebuild', title: 'Rebuild the Search Index', needsFolder: true, run: () => useMeaning.getState().rebuild() },
   { id: 'editor.find', title: 'Find in File', shortcut: 'mod+f', run: () => editorHost.editor?.getAction('actions.find')?.run() },
   { id: 'view.sidebar', title: 'Toggle Sidebar', shortcut: 'mod+b', run: () => toggleLayout('sidebarVisible') },
   { id: 'view.chat', title: 'Toggle Chat', shortcut: 'mod+alt+b', run: () => toggleLayout('chatVisible') },

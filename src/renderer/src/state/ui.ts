@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { uid } from '../api'
 
 export type PaletteMode = 'files' | 'commands'
-export type SettingsSection = 'general' | 'models' | 'agent' | 'autocomplete' | 'editor' | 'about'
+export type SettingsSection = 'general' | 'models' | 'agent' | 'autocomplete' | 'search' | 'editor' | 'about'
 
 export interface Toast {
   id: string
@@ -15,6 +15,9 @@ interface UiStore {
   settings: SettingsSection | null
   modelsOpen: boolean
   sidebarTab: 'files' | 'search' | 'changes'
+  searchMode: 'exact' | 'meaning'
+  /** A chat image shown full size. */
+  lightbox: { id: string; name: string } | null
   searchFocusTick: number
   chatFocusTick: number
   dark: boolean
@@ -38,6 +41,8 @@ export const useUi = create<UiStore>((set, get) => ({
   settings: null,
   modelsOpen: false,
   sidebarTab: 'files',
+  searchMode: 'exact',
+  lightbox: null,
   searchFocusTick: 0,
   chatFocusTick: 0,
   dark: darkQuery.matches,

@@ -6,7 +6,7 @@
 
 <p align="center">
   A calm code editor for AI models that live on your machine.<br />
-  Agent, inline edits and autocomplete, powered by Ollama, LM Studio or llama.cpp. Nothing leaves your computer.
+  Agent, inline edits, autocomplete and search by meaning, powered by Ollama, LM Studio or llama.cpp. Nothing leaves your computer.
 </p>
 
 <p align="center">
@@ -35,6 +35,8 @@ Local models are smaller than cloud ones, so Hearth is built to help them succee
 - **Tab autocomplete.** Ghost-text suggestions from a small fill-in-the-middle model such as `qwen2.5-coder:1.5b`.
 - **Source control.** See what changed since your last commit, in the file tree, in the editor gutter and in a Changes panel with diffs. Stage, discard, commit, pull and push, and let your local model write the commit message from the diff.
 - **A chat that keeps up.** Retry an answer or edit your last request, click file names in answers to open them, and watch how full the model's context window is getting.
+- **Search by meaning.** Find code by what it does, like "keep the window from closing with unsaved files", even when it uses none of those words. A small embedding model indexes the project on your computer and keeps up as files change. The agent can search the same way, and a model without tools gets the code that clearly relates to your question attached for it.
+- **Screenshots in the chat.** Paste, drop or attach an image: an error, a broken layout, a mockup. A model that can see, like `qwen3-vl`, looks at it directly. For one that cannot, a small vision model first writes down what the image shows, every word of text included, so any model can work from a screenshot.
 - **The ember.** The mark in the title bar shows the model's state: cold, warming up, warm in memory, or writing (with tokens per second). Open it to see memory use, warm a model up before you need it, let it cool to free memory, or download new models.
 - **Any local server.** Ollama, LM Studio, llama.cpp, vLLM, Jan, or anything that speaks the OpenAI chat API, including a server on another machine of yours.
 - **A real editor.** Monaco (the editor inside VS Code) with warm Coal and Paper themes, tabs, quick open, project search, a command palette and a built-in terminal.
@@ -44,6 +46,11 @@ Local models are smaller than cloud ones, so Hearth is built to help them succee
 <p align="center">
   <img src="docs/inline-edit.png" width="49%" alt="Editing a selection in place" />
   <img src="docs/models.png" width="49%" alt="The models panel" />
+</p>
+
+<p align="center">
+  <img src="docs/meaning.png" width="49%" alt="Search by meaning finding the code that keeps a window from closing while files are unsaved" />
+  <img src="docs/images.png" width="49%" alt="A model without vision fixing a failing test from a screenshot that a small vision model read for it" />
 </p>
 
 <p align="center">
@@ -81,6 +88,15 @@ The agent needs a model that supports tool calling. Good starting points:
 | 32 GB | `qwen3:14b` or `gpt-oss:20b` | `qwen2.5-coder:7b` |
 | 64 GB or more | `qwen3-coder:30b` | `qwen2.5-coder:7b` |
 
+Two optional models add more. The ember offers both:
+
+| For | Model | Download |
+| --- | --- | --- |
+| Search by meaning | `qwen3-embedding:0.6b` | about 640 MB |
+| Reading images for a chat model that cannot | `qwen3-vl:4b` | about 3.3 GB |
+
+`qwen3-vl:4b` also works as the chat model itself: it uses tools and sees images directly.
+
 LM Studio and llama.cpp are found automatically on their default ports (`127.0.0.1:1234` and `127.0.0.1:8080`). Other servers can be added in Settings, Models.
 
 ## Shortcuts
@@ -98,12 +114,13 @@ LM Studio and llama.cpp are found automatically on their default ports (`127.0.0
 | Toggle the sidebar, the chat | ⌘B, ⌥⌘B | Ctrl+B, Ctrl+Alt+B |
 | Settings | ⌘, | Ctrl+, |
 
-In the chat, type `@` to attach a file, and use the Agent and Ask switch under the message box.
+In the chat, type `@` to attach a file, paste or drop an image, and use the Agent and Ask switch under the message box. To search by meaning, open Find in the project and switch to Meaning.
 
 ## Privacy and safety
 
 - Hearth talks only to the model servers listed in Settings. By default those are on `127.0.0.1`. There is no telemetry and no account. The one exception is **Check for Updates**, which asks GitHub for the latest version only when you click it.
 - The agent can only read and write inside the folder you opened. Deleted files go to the Trash or the Recycle Bin.
+- Search by meaning sends your files only to the embedding model you chose, on your own model server, and keeps its index in Hearth's data folder. Images you attach are stored there too, so past chats can show them.
 - Source control runs the `git` already on your computer. Pushing and pulling use your own Git credentials and only happen when you click them.
 - Commands always wait for your approval unless you turn that off in Settings, Agent. Edits are applied right away by default and can be undone from the chat; you can make them wait for approval too.
 
@@ -124,21 +141,21 @@ Other scripts:
 | --- | --- |
 | `npm run build` | Builds the app into `out/` |
 | `npm start` | Runs the built app |
-| `npm test` | Unit tests (edit matching, paths, streaming, tool parsing) |
+| `npm test` | Unit tests (edit matching, paths, streaming, tool parsing, search ranking) |
 | `npm run e2e` | Drives the real app against a scripted mock Ollama server |
 | `npm run dist:mac` | Packages a `.dmg` and `.zip` into `release/` |
 | `npm run dist:win` | Packages a Windows installer into `release/` |
 
-Every push runs the unit and end-to-end tests on Windows, macOS and Linux in GitHub Actions. Tagging a version (`git tag v0.2.0 && git push --tags`) builds and publishes the installers.
+Every push runs the unit and end-to-end tests on Windows, macOS and Linux in GitHub Actions. Tagging a version (`git tag v0.3.0 && git push --tags`) builds and publishes the installers.
 
 ## How it is put together
 
 | Folder | Role |
 | --- | --- |
-| `src/main` | Electron main process: windows, the `hearth://` protocol, file access scoped to the open folder, the terminal (node-pty), commands, and all model traffic (`llm/`) |
+| `src/main` | Electron main process: windows, the `hearth://` protocol, file access scoped to the open folder, the terminal (node-pty), commands, the search index (`semanticIndex.ts`), and all model traffic (`llm/`) |
 | `src/preload` | The small, typed bridge the interface uses (`window.hearth`) |
 | `src/renderer` | The interface: React, Monaco, xterm.js, the agent loop (`agent/`, `state/chat.ts`), inline edit and autocomplete (`editor/`) |
-| `src/shared` | Code used on both sides: types, the forgiving edit matcher, tool call recovery, the reasoning splitter |
+| `src/shared` | Code used on both sides: types, the forgiving edit matcher, tool call recovery, the reasoning splitter, chunking and ranking for search by meaning |
 
 ## Contributing
 

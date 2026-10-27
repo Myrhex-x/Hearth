@@ -71,7 +71,7 @@ export async function ollamaModels(p: ProviderConfig): Promise<ModelInfo[]> {
   const res = await http(joinUrl(p.baseUrl, '/api/tags'), { timeoutMs: 4000 })
   if (!res.ok) throw new Error(await readError(res))
   const data = (await res.json()) as { models?: OllamaTag[] }
-  const tags = (data.models ?? []).filter((m) => !/embed/i.test(m.name))
+  const tags = data.models ?? []
   return Promise.all(
     tags.map(async (m): Promise<ModelInfo> => {
       let capabilities: ModelCapability[] | undefined
@@ -83,6 +83,8 @@ export async function ollamaModels(p: ProviderConfig): Promise<ModelInfo[]> {
       } catch {
         // older servers without /api/show details
       }
+      // Older servers do not report "embedding"; the name is a reliable hint.
+      if (/embed/i.test(m.name) && !capabilities?.includes('embedding')) capabilities = ['embedding']
       return {
         id: modelIdOf(p.id, m.name),
         providerId: p.id,
@@ -227,6 +229,14 @@ export async function ollamaComplete(p: ProviderConfig, name: string, req: Compl
   if (!res.ok) throw new Error(await readError(res))
   const data = (await res.json()) as { response?: string }
   return data.response ?? ''
+}
+
+export async function ollamaEmbed(p: ProviderConfig, name: string, inputs: string[], keepAlive: string, signal?: AbortSignal): Promise<number[][]> {
+  const res = await http(joinUrl(p.baseUrl, '/api/embed'), { body: { model: name, input: inputs, truncate: true, keep_alive: keepAlive }, signal })
+  if (!res.ok) throw new Error(await readError(res))
+  const data = (await res.json()) as { embeddings?: number[][] }
+  if (!data.embeddings || data.embeddings.length !== inputs.length) throw new Error(`${name} did not return embeddings. Is it an embedding model?`)
+  return data.embeddings
 }
 
 export async function ollamaPull(p: ProviderConfig, name: string, signal: AbortSignal, emit: (e: PullProgress) => void): Promise<void> {

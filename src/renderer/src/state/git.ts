@@ -258,7 +258,7 @@ export const useGit = create<GitStore>((set, get) => ({
         contextWindow: settings.contextWindow,
         keepAlive: settings.keepAlive,
         think: supportsThinking(modelId) ? false : undefined,
-        maxTokens: 300
+        maxTokens: 2000
       })
     })
     useModels.setState({ activity: 'idle', liveTokens: 0 })

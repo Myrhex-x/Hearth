@@ -38,7 +38,7 @@ export interface ProviderStatus {
   error?: string
 }
 
-export type ModelCapability = 'tools' | 'insert' | 'thinking' | 'vision' | 'completion'
+export type ModelCapability = 'tools' | 'insert' | 'thinking' | 'vision' | 'completion' | 'embedding'
 
 export interface ModelInfo {
   /** `${providerId}::${name}` */
@@ -224,6 +224,29 @@ export interface GitStatus {
   error?: string
 }
 
+export interface IndexStatus {
+  state: 'off' | 'no-model' | 'indexing' | 'ready' | 'error'
+  model: string | null
+  /** Files and pieces in the index right now. */
+  files: number
+  chunks: number
+  /** Progress of the current pass, in files. */
+  done: number
+  total: number
+  error?: string
+  updatedAt?: number
+}
+
+export interface MeaningResult {
+  path: string
+  start: number
+  end: number
+  score: number
+  /** Score minus the average piece's score for the same question: how much this one stands out. */
+  standout: number
+  text: string
+}
+
 export interface UpdateInfo {
   current: string
   latest: string | null
@@ -280,6 +303,12 @@ export interface Settings {
   temperature: number | null
   keepAlive: string
   showThinking: boolean
+  /** Reads images for chat models that cannot see. null picks one automatically. */
+  imageModel: string | null
+  /** Turns code into vectors for search by meaning. null picks one automatically. */
+  embeddingModel: string | null
+  /** Build a search-by-meaning index for the open project. */
+  indexing: boolean
   agent: {
     autoApplyEdits: boolean
     autoRunCommands: boolean
@@ -332,6 +361,9 @@ export const DEFAULT_SETTINGS: Settings = {
   temperature: null,
   keepAlive: '30m',
   showThinking: true,
+  imageModel: null,
+  embeddingModel: null,
+  indexing: true,
   agent: { autoApplyEdits: true, autoRunCommands: false, maxSteps: 24 },
   editor: { fontSize: 13, tabSize: 2, wordWrap: false, minimap: false, lineNumbers: true },
   terminal: { fontSize: 12 },

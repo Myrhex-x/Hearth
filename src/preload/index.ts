@@ -82,6 +82,16 @@ const api: HearthApi = {
     onData: (id, cb) => subscribeFor('term:data', id, cb),
     onExit: (id, cb) => subscribeFor('term:exit', id, cb)
   },
+  index: {
+    status: () => ipcRenderer.invoke('index:status'),
+    search: (query, limit, under) => ipcRenderer.invoke('index:search', query, limit, under),
+    rebuild: () => ipcRenderer.invoke('index:rebuild'),
+    onStatus: (cb) => subscribe('index:status', cb)
+  },
+  attachments: {
+    save: (base64, mime) => ipcRenderer.invoke('attach:save', base64, mime),
+    read: (id) => ipcRenderer.invoke('attach:read', id)
+  },
   git: {
     status: () => ipcRenderer.invoke('git:status'),
     showHead: (rel) => ipcRenderer.invoke('git:show-head', rel),

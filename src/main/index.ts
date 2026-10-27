@@ -3,7 +3,9 @@ import { promises as fs, statSync } from 'fs'
 import { homedir } from 'os'
 import { dirname, join, normalize } from 'path'
 import { pathToFileURL } from 'url'
-import type { AppInfo, ChatRequest, CompletionRequest, ContextMenuItem, MessageBoxOptions, SearchOptions, SettingsPatch, WriteOptions } from '../shared/types'
+import type { AppInfo, ChatRequest, CompletionRequest, ContextMenuItem, IndexStatus, MeaningResult, MessageBoxOptions, SearchOptions, SettingsPatch, WriteOptions } from '../shared/types'
+import { readAttachment, saveAttachment } from './attachments'
+import { SemanticIndex } from './semanticIndex'
 import { abortCommand, runCommand } from './exec'
 import * as git from './git'
 import * as llm from './llm'
@@ -38,6 +40,58 @@ interface WindowState {
 }
 
 const windows = new Map<number, WindowState>()
+/** Search-by-meaning indexes, one per open project folder, shared by its windows. */
+const indexes = new Map<string, { index: SemanticIndex; windows: Set<number> }>()
+const OFF: IndexStatus = { state: 'off', model: null, files: 0, chunks: 0, done: 0, total: 0 }
+
+function indexKey(root: string): string {
+  return process.platform === 'linux' ? root : root.toLowerCase()
+}
+
+function indexModel(): string | null {
+  const s = getSettings()
+  return s.indexing ? s.embeddingModel : null
+}
+
+function attachIndex(state: WindowState): void {
+  const ws = state.workspace
+  if (!ws) return
+  const key = indexKey(ws.root)
+  let entry = indexes.get(key)
+  if (!entry) {
+    const created: { index: SemanticIndex; windows: Set<number> } = {
+      windows: new Set(),
+      index: new SemanticIndex(ws, (status) => {
+        for (const id of created.windows) {
+          const w = windows.get(id)
+          if (w) safeSend(w.win.webContents, 'index:status', status)
+        }
+      })
+    }
+    entry = created
+    indexes.set(key, entry)
+    void entry.index.configure(indexModel())
+  }
+  entry.windows.add(state.win.webContents.id)
+}
+
+function detachIndex(state: WindowState, id = state.win.webContents.id): void {
+  const ws = state.workspace
+  if (!ws) return
+  const key = indexKey(ws.root)
+  const entry = indexes.get(key)
+  if (!entry) return
+  entry.windows.delete(id)
+  if (!entry.windows.size) {
+    entry.index.dispose()
+    indexes.delete(key)
+  }
+}
+
+function indexOf(sender: WebContents): SemanticIndex | null {
+  const ws = stateOf(sender).workspace
+  return ws ? (indexes.get(indexKey(ws.root))?.index ?? null) : null
+}
 const aborts = new Map<string, AbortController>()
 let quitting = false
 
@@ -123,6 +177,7 @@ function createWindow(folder?: string): BrowserWindow {
     win.webContents.send('app:close-requested')
   })
   win.on('closed', () => {
+    detachIndex(state, id)
     state.workspace?.dispose()
     windows.delete(id)
   })
@@ -199,10 +254,15 @@ function safeSend(target: WebContents, channel: string, ...args: unknown[]): voi
 
 async function openWorkspace(sender: WebContents, root: string) {
   const state = stateOf(sender)
-  const workspace = new Workspace(root, (paths) => safeSend(sender, 'ws:changed', paths))
+  const workspace: Workspace = new Workspace(root, (paths) => {
+    safeSend(sender, 'ws:changed', paths)
+    indexes.get(indexKey(workspace.root))?.index.markDirty(paths)
+  })
   await workspace.init()
+  detachIndex(state)
   state.workspace?.dispose()
   state.workspace = workspace
+  attachIndex(state)
   const settings = getSettings()
   const recent = [{ root, name: workspace.name, openedAt: Date.now() }, ...settings.recent.filter((r) => r.root !== root)].slice(0, 12)
   updateSettings({ recent, lastWorkspace: root })
@@ -285,6 +345,7 @@ function registerIpc(): void {
   handle<[SettingsPatch], unknown>('settings:set', (_s, patch) => {
     const next = updateSettings(patch)
     if (patch.theme) nativeTheme.themeSource = next.theme
+    if ('embeddingModel' in patch || 'indexing' in patch) for (const e of indexes.values()) void e.index.configure(indexModel())
     for (const s of windows.values()) safeSend(s.win.webContents, 'settings:changed', next)
     return next
   })
@@ -300,6 +361,7 @@ function registerIpc(): void {
   handle<[string], unknown>('ws:open', (sender, root) => openWorkspace(sender, root))
   handle('ws:close', (sender) => {
     const state = stateOf(sender)
+    detachIndex(state)
     state.workspace?.dispose()
     state.workspace = null
     state.win.setTitle('Hearth')
@@ -388,6 +450,18 @@ function registerIpc(): void {
     return runCommand(id, command, cwd, (chunk) => safeSend(sender, 'exec:output', id, chunk))
   })
   on<[string]>('exec:abort', (_s, id) => abortCommand(id))
+
+  // Search by meaning
+  handle('index:status', (sender) => indexOf(sender)?.status ?? OFF)
+  handle<[string, number | undefined, string | undefined], MeaningResult[]>('index:search', async (sender, query, k, under) => {
+    const index = indexOf(sender)
+    return index ? index.search(query, k ?? 8, under) : []
+  })
+  handle('index:rebuild', (sender) => indexOf(sender)?.rebuild())
+
+  // Images attached to chat messages
+  handle<[string, string], string>('attach:save', (_s, base64, mime) => saveAttachment(base64, mime))
+  handle<[string], string | null>('attach:read', (_s, id) => readAttachment(id))
 
   // Git
   handle('git:status', (sender) => git.gitStatus(ws(sender).root))

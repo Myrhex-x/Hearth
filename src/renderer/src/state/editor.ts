@@ -70,15 +70,39 @@ export function activeTab(): Tab | undefined {
   return tabs.find((t) => t.id === activeId)
 }
 
-function reveal(opts?: OpenOptions): void {
-  const ed = editorHost.editor
-  if (!ed || !opts?.line) return
-  const line = Math.max(1, opts.line)
+let pendingReveal: { path: string; opts: OpenOptions } | null = null
+
+function applyReveal(ed: monaco.editor.IStandaloneCodeEditor, opts: OpenOptions): void {
+  const line = Math.max(1, opts.line!)
   const col = Math.max(1, opts.column ?? 1)
-  ed.revealLineInCenterIfOutsideViewport(line)
+  ed.revealLineInCenterIfOutsideViewport(line, monaco.editor.ScrollType.Immediate)
   if (opts.endLine && opts.endLine >= line) {
     ed.setSelection(new monaco.Selection(line, 1, opts.endLine, ed.getModel()?.getLineMaxColumn(opts.endLine) ?? 1))
   } else ed.setPosition({ lineNumber: line, column: col })
+}
+
+function reveal(path: string, opts?: OpenOptions): void {
+  if (!opts?.line) return
+  const ed = editorHost.editor
+  const entry = entries.get(path)
+  // A file that is not on screen yet gets its model after React renders: finish in revealPending.
+  if (!ed || !entry || ed.getModel() !== entry.model) {
+    pendingReveal = { path, opts }
+    return
+  }
+  pendingReveal = null
+  applyReveal(ed, opts)
+}
+
+/** Called by the editor once it shows a file, to go to the line it was opened for. */
+export function revealPending(path: string): void {
+  const ed = editorHost.editor
+  if (!ed || pendingReveal?.path !== path) return
+  const { opts } = pendingReveal
+  pendingReveal = null
+  // The editor stays hidden until the first file opens: measure it now, or the scroll is lost.
+  ed.layout()
+  applyReveal(ed, opts)
 }
 
 async function loadEntry(path: string): Promise<Tab> {
@@ -144,7 +168,7 @@ export const useEditor = create<EditorStore>((set, get) => ({
       saveViewState()
       const tabs = opts?.preview === false && existing.preview ? get().tabs.map((t) => (t.id === path ? { ...t, preview: false } : t)) : get().tabs
       set({ activeId: path, tabs })
-      queueMicrotask(() => reveal(opts))
+      reveal(path, opts)
       void useWorkspace.getState().expandTo(path)
       return
     }
@@ -168,7 +192,7 @@ export const useEditor = create<EditorStore>((set, get) => ({
     } else tabs.splice(activeIndex + 1, 0, next)
     tabs = tabs.filter((t, i, arr) => arr.findIndex((x) => x.id === t.id) === i)
     set({ tabs, activeId: path })
-    queueMicrotask(() => reveal(opts))
+    reveal(path, opts)
     void useWorkspace.getState().expandTo(path)
   },
 

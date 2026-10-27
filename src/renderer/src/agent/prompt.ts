@@ -76,7 +76,9 @@ If a change would help, show it as a short code block and mention that Agent mod
 
 const NO_TOOLS = `This model cannot use tools, so you cannot open files yourself. Work from the context the user attached. If you need a file, ask the user to attach it with @.`
 
-export async function buildSystemPrompt(mode: 'agent' | 'ask', toolsEnabled: boolean): Promise<string> {
+const MEANING_RULE = `- To find where something happens when you do not know its names ("where are passwords checked"), use search_meaning. For exact words or names, use search.`
+
+export async function buildSystemPrompt(mode: 'agent' | 'ask', toolsEnabled: boolean, meaning = false): Promise<string> {
   const info = await getAppInfo()
   const ws = useWorkspace.getState().info
   const [tree, rules] = await Promise.all([ws ? topLevel() : Promise.resolve(''), ws ? projectRules() : Promise.resolve('')])
@@ -95,7 +97,7 @@ export async function buildSystemPrompt(mode: 'agent' | 'ask', toolsEnabled: boo
     ]
       .filter(Boolean)
       .join('\n'),
-    toolsEnabled ? (mode === 'agent' ? AGENT_RULES : ASK_RULES) : NO_TOOLS,
+    toolsEnabled ? (mode === 'agent' ? AGENT_RULES : ASK_RULES) + (meaning ? `\n${MEANING_RULE}` : '') : NO_TOOLS,
     'Reply in the language the user writes in. Be concise and concrete. Use Markdown, and put code in fenced blocks with a language name.',
     tree ? `Top level of the project:\n${tree}` : '',
     focusContext(),

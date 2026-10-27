@@ -1,10 +1,12 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { Bot, Code2, Info, Paintbrush, Server, Sparkles, Trash2, X } from 'lucide-react'
+import { Bot, Code2, Info, Paintbrush, ScanSearch, Server, Sparkles, Trash2, X } from 'lucide-react'
 import type { AppInfo, ProviderConfig, ProviderKind } from '../../../shared/types'
 import { api, uid } from '../api'
 import { shortModelName } from '../lib/format'
 import { checkForUpdates } from '../lib/updates'
-import { useModels } from '../state/models'
+import { chatModels, embeddingModels, useModels, visionModels } from '../state/models'
+import { useMeaning } from '../state/meaning'
+import { useWorkspace } from '../state/workspace'
 import { useSettings } from '../state/settings'
 import { useUi, type SettingsSection } from '../state/ui'
 import { Button, IconButton, Logo, Segmented, Toggle, cx } from './ui'
@@ -14,6 +16,7 @@ const SECTIONS: { id: SettingsSection; label: string; icon: ReactNode }[] = [
   { id: 'models', label: 'Models', icon: <Server size={15} strokeWidth={1.7} /> },
   { id: 'agent', label: 'Agent', icon: <Bot size={15} strokeWidth={1.7} /> },
   { id: 'autocomplete', label: 'Autocomplete', icon: <Sparkles size={15} strokeWidth={1.7} /> },
+  { id: 'search', label: 'Search', icon: <ScanSearch size={15} strokeWidth={1.7} /> },
   { id: 'editor', label: 'Editor', icon: <Code2 size={15} strokeWidth={1.7} /> },
   { id: 'about', label: 'About', icon: <Info size={15} strokeWidth={1.7} /> }
 ]
@@ -184,7 +187,9 @@ function General() {
 function Models() {
   const s = useSettings((x) => x.settings)
   const update = useSettings((x) => x.update)
-  const models = useModels((x) => x.models)
+  const all = useModels((x) => x.models)
+  const models = chatModels(all)
+  const seers = visionModels(all)
   return (
     <>
       <Group title="Model servers" note="Hearth only connects to the servers listed here. Ollama is used for downloads and for keeping models warm.">
@@ -210,6 +215,19 @@ function Models() {
           <select className="select" value={s.inlineEditModel ?? ''} onChange={(e) => void update({ inlineEditModel: e.target.value || null })}>
             <option value="">Same as chat</option>
             {models.map((m) => (
+              <option key={m.id} value={m.id}>
+                {shortModelName(m.name)}
+              </option>
+            ))}
+          </select>
+        </Row>
+        <Row
+          label="Model for images"
+          detail={seers.length ? 'When the chat model cannot see, this one describes your images for it.' : 'Install a model that can see, like qwen3-vl:4b, to use images with any chat model.'}
+        >
+          <select className="select" value={s.imageModel ?? ''} disabled={!seers.length} onChange={(e) => void update({ imageModel: e.target.value || null })}>
+            <option value="">{seers.length ? 'None' : 'No model can see yet'}</option>
+            {seers.map((m) => (
               <option key={m.id} value={m.id}>
                 {shortModelName(m.name)}
               </option>
@@ -282,7 +300,7 @@ function Autocomplete() {
   const s = useSettings((x) => x.settings)
   const update = useSettings((x) => x.update)
   const models = useModels((x) => x.models)
-  const fim = models.filter((m) => !m.capabilities || m.capabilities.includes('insert'))
+  const fim = chatModels(models).filter((m) => !m.capabilities || m.capabilities.includes('insert'))
   return (
     <Group title="Autocomplete" note="Suggestions appear as faded text. Press Tab to accept. A small code model (1.5B to 7B) keeps it quick.">
       <Row label="Suggest as I type">
@@ -299,6 +317,56 @@ function Autocomplete() {
         </select>
       </Row>
     </Group>
+  )
+}
+
+function Search() {
+  const s = useSettings((x) => x.settings)
+  const update = useSettings((x) => x.update)
+  const models = useModels((x) => x.models)
+  const status = useMeaning((x) => x.status)
+  const project = useWorkspace((x) => x.info)
+  const embedders = embeddingModels(models)
+  const state =
+    status.state === 'ready'
+      ? `${status.files.toLocaleString()} files, ${status.chunks.toLocaleString()} pieces`
+      : status.state === 'indexing'
+        ? status.total
+          ? `Indexing ${status.done.toLocaleString()} of ${status.total.toLocaleString()} files`
+          : 'Looking for changes'
+        : status.state === 'error'
+          ? (status.error ?? 'Failed')
+          : status.state === 'no-model'
+            ? 'Waiting for an embedding model'
+            : 'Off'
+  return (
+    <>
+      <Group
+        title="Search by meaning"
+        note="Hearth cuts your project into pieces and turns each into numbers with a small local model, so you and the agent can find code by what it does. The index stays in Hearth's data folder on this computer."
+      >
+        <Row label="Index projects" detail="Updates in the background as files change.">
+          <Toggle checked={s.indexing} onChange={(v) => void update({ indexing: v })} />
+        </Row>
+        <Row label="Embedding model" detail={embedders.length ? 'qwen3-embedding:0.6b understands code well. nomic-embed-text is the smallest.' : 'Get qwen3-embedding:0.6b (about 640 MB) from the models panel.'}>
+          <select className="select" value={s.embeddingModel ?? ''} disabled={!embedders.length} onChange={(e) => void update({ embeddingModel: e.target.value || null })}>
+            <option value="">{embedders.length ? 'None' : 'No embedding model yet'}</option>
+            {embedders.map((m) => (
+              <option key={m.id} value={m.id}>
+                {shortModelName(m.name)}
+              </option>
+            ))}
+          </select>
+        </Row>
+        {project && (
+          <Row label={`This project: ${project.name}`} detail={state}>
+            <Button size="sm" disabled={!s.indexing || !s.embeddingModel || status.state === 'indexing'} onClick={() => void useMeaning.getState().rebuild()}>
+              Rebuild
+            </Button>
+          </Row>
+        )}
+      </Group>
+    </>
   )
 }
 
@@ -419,6 +487,7 @@ export function SettingsSheet() {
             {section === 'models' && <Models />}
             {section === 'agent' && <Agent />}
             {section === 'autocomplete' && <Autocomplete />}
+            {section === 'search' && <Search />}
             {section === 'editor' && <Editor />}
             {section === 'about' && <About />}
           </div>

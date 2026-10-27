@@ -1,15 +1,19 @@
 import { create } from 'zustand'
 import type { ChatEvent, GenStats, LlmMessage, ToolCall, ToolSpec } from '../../../shared/types'
+import { splitModelId } from '../../../shared/types'
 import { isLooping } from '../../../shared/loop'
+import { STANDS_OUT } from '../../../shared/semantic'
 import { extractToolCalls } from '../../../shared/toolText'
 import { api, uid } from '../api'
 import { buildSystemPrompt } from '../agent/prompt'
 import { describeCall, executeTool, READ_ONLY_TOOLS, TOOL_NAMES, TOOL_SPECS, type Decision } from '../agent/tools'
-import type { AssistantPart, ChatMessage, ChatThread, ContextChip, FileChange, ToolStep } from '../agent/types'
+import type { AssistantPart, ChatMessage, ChatThread, ContextChip, FileChange, ImageAttachment, ToolStep } from '../agent/types'
+import { imageData, prepareImage } from '../lib/images'
 import { shortModelName } from '../lib/format'
 import { basename } from '../lib/paths'
 import { activeTab, openText, writeFileContent } from './editor'
-import { modelById, supportsThinking, supportsTools, useModels } from './models'
+import { modelById, supportsThinking, supportsTools, supportsVision, useModels } from './models'
+import { meaningAvailable } from './meaning'
 import { settingsNow } from './settings'
 import { toast, useUi } from './ui'
 
@@ -22,6 +26,8 @@ interface ChatStore {
   mode: ChatMode
   draft: string
   chips: ContextChip[]
+  /** Images waiting in the message box. */
+  images: ImageAttachment[]
   activeFileDismissed: string | null
   newThread(): void
   select(id: string): void
@@ -32,6 +38,8 @@ interface ChatStore {
   addChip(chip: ContextChip): void
   removeChip(index: number): void
   dismissActiveFile(path: string | null): void
+  addImages(files: { blob: Blob; name: string }[]): Promise<void>
+  removeImage(index: number): void
   send(text: string): Promise<void>
   stop(): void
   decide(stepId: string, decision: Decision): void
@@ -64,6 +72,7 @@ export const useChat = create<ChatStore>((set, get) => ({
   mode: 'agent',
   draft: '',
   chips: [],
+  images: [],
   activeFileDismissed: null,
 
   newThread() {
@@ -126,9 +135,31 @@ export const useChat = create<ChatStore>((set, get) => ({
     set({ activeFileDismissed: path })
   },
 
+  async addImages(files) {
+    const room = 8 - get().images.length
+    if (room <= 0) {
+      toast('Up to 8 images per message.')
+      return
+    }
+    const added: ImageAttachment[] = []
+    for (const f of files.slice(0, room)) {
+      try {
+        added.push(await prepareImage(f.blob, f.name))
+      } catch (err) {
+        toast(`Could not attach ${f.name}: ${(err as Error).message}`, 'error')
+      }
+    }
+    if (added.length) set({ images: [...get().images, ...added] })
+  },
+
+  removeImage(index) {
+    set({ images: get().images.filter((_, i) => i !== index) })
+  },
+
   async send(text) {
     const trimmed = text.trim()
-    if (!trimmed || get().runningThread) return
+    const images = [...get().images]
+    if ((!trimmed && !images.length) || get().runningThread) return
     const settings = settingsNow()
     const modelId = settings.chatModel
     if (!modelId) {
@@ -145,13 +176,27 @@ export const useChat = create<ChatStore>((set, get) => ({
     if (tab?.kind === 'file' && get().activeFileDismissed !== tab.path && !chips.some((c) => c.path === tab.path && c.kind === 'file')) {
       chips.unshift({ kind: 'file', path: tab.path })
     }
+    // A model that cannot search gets the code that looks most related, found by meaning.
+    // Only what clearly stands out: "thanks!" should not pull in four random files.
+    if (trimmed && !supportsTools(modelId) && meaningAvailable()) {
+      try {
+        for (const r of await api.index.search(trimmed, 4)) {
+          if (r.standout < STANDS_OUT) continue
+          if (!chips.some((c) => c.path === r.path && c.kind === 'file')) chips.push({ kind: 'snippet', path: r.path, startLine: r.start, endLine: r.end, text: r.text })
+        }
+      } catch {
+        // the index is unavailable: answer without it
+      }
+    }
+    const ask = trimmed || 'Look at the attached image and tell me what matters in it.'
     const userMsg: ChatMessage = {
       id: uid('msg'),
       role: 'user',
       createdAt: Date.now(),
       text: trimmed,
       chips,
-      llmContent: await withContext(trimmed, chips)
+      images: images.length ? images : undefined,
+      llmContent: await withContext(ask, chips)
     }
     const assistant: ChatMessage = {
       id: uid('msg'),
@@ -166,14 +211,15 @@ export const useChat = create<ChatStore>((set, get) => ({
     const threadId = thread.id
     patchThread(threadId, (t) => ({
       ...t,
-      title: t.messages.length === 0 ? threadTitle(trimmed) : t.title,
+      title: t.messages.length === 0 ? threadTitle(trimmed || images[0]?.name || 'Image') : t.title,
       updatedAt: Date.now(),
       messages: [...t.messages, userMsg, assistant]
     }))
-    set({ draft: '', chips: [], runningThread: threadId, activeFileDismissed: null })
+    set({ draft: '', chips: [], images: [], runningThread: threadId, activeFileDismissed: null })
     stopped = false
     try {
-      await runTurn(threadId, assistant.id)
+      if (images.length) await prepareImagesFor(threadId, userMsg.id, assistant.id, modelId)
+      if (!stopped) await runTurn(threadId, assistant.id)
     } catch (err) {
       patchMessage(threadId, assistant.id, (m) => ({ ...m, error: (err as Error).message }))
     } finally {
@@ -229,14 +275,14 @@ export const useChat = create<ChatStore>((set, get) => ({
   async retry() {
     const taken = await takeBackLastExchange()
     if (!taken) return
-    set({ chips: taken.chips })
+    set({ chips: taken.chips, images: taken.images })
     await get().send(taken.text)
   },
 
   async editLast() {
     const taken = await takeBackLastExchange()
     if (!taken) return
-    set({ draft: taken.text, chips: taken.chips })
+    set({ draft: taken.text, chips: taken.chips, images: taken.images })
     useUi.getState().focusChat()
   }
 }))
@@ -245,7 +291,7 @@ export const useChat = create<ChatStore>((set, get) => ({
  * Removes the last request and its answer from the active chat, offering to
  * undo the files that answer changed first. Returns what the person asked.
  */
-async function takeBackLastExchange(): Promise<{ text: string; chips: ContextChip[] } | null> {
+async function takeBackLastExchange(): Promise<{ text: string; chips: ContextChip[]; images: ImageAttachment[] } | null> {
   const state = useChat.getState()
   if (state.runningThread) return null
   const thread = state.threads.find((t) => t.id === state.activeId)
@@ -268,7 +314,8 @@ async function takeBackLastExchange(): Promise<{ text: string; chips: ContextChi
     if (choice === 0) await useChat.getState().revert(answer.id)
   }
   patchThread(thread.id, (t) => ({ ...t, updatedAt: Date.now(), messages: t.messages.slice(0, userIndex) }))
-  return { text: user.text ?? '', chips: user.chips ?? [] }
+  // Code found by meaning is looked up again on send.
+  return { text: user.text ?? '', chips: (user.chips ?? []).filter((c) => c.kind !== 'snippet'), images: user.images ?? [] }
 }
 
 function patchThread(threadId: string, fn: (t: ChatThread) => ChatThread): void {
@@ -292,6 +339,10 @@ async function withContext(text: string, chips: ContextChip[]): Promise<string> 
   if (!chips.length) return text
   const blocks: string[] = []
   for (const chip of chips) {
+    if (chip.kind === 'snippet' && chip.text !== undefined) {
+      blocks.push(`<snippet path="${chip.path}" lines="${chip.startLine}-${chip.endLine}" note="found in the project because it looks related">\n${chip.text}\n</snippet>`)
+      continue
+    }
     if (chip.kind === 'selection' && chip.text !== undefined) {
       blocks.push(`<selection path="${chip.path}" lines="${chip.startLine}-${chip.endLine}">\n${chip.text}\n</selection>`)
       continue
@@ -309,6 +360,134 @@ async function withContext(text: string, chips: ContextChip[]): Promise<string> 
     blocks.push(`<file path="${chip.path}">\n${content}\n</file>`)
   }
   return `${blocks.join('\n\n')}\n\n${text}`
+}
+
+const DESCRIBE = `You describe images for a coding assistant that cannot see them. Write what is in the image so precisely that someone could work from your words alone.
+1. Copy every piece of visible text exactly as written: code, error messages, stack traces, file names, labels and numbers. Keep the line breaks. Put code and errors in fenced blocks.
+2. Describe what the image shows. For a screenshot of an app: the layout, the controls, the colors, and anything that looks broken or misaligned. For a diagram: the boxes, arrows and labels. For a photo: the main subject.
+3. Say clearly when something cannot be read. Never guess.
+Start directly with the description.`
+
+function imageBlocks(images: ImageAttachment[]): string {
+  return images
+    .map((img) =>
+      img.description
+        ? `<image name="${img.name}" seen_by="${img.describedBy ? shortModelName(splitModelId(img.describedBy).name) : 'another model'}">\n${img.description}\n</image>`
+        : `(The user attached an image, "${img.name}", but it could not be read. Do not guess what it shows.)`
+    )
+    .join('\n\n')
+}
+
+/**
+ * A model that cannot see gets a description of each image, written by a
+ * model that can. One that can see receives the pixels in runTurn.
+ */
+async function prepareImagesFor(threadId: string, userId: string, assistantId: string, modelId: string): Promise<void> {
+  const images = getMessage(threadId, userId)?.images ?? []
+  if (!images.length) return
+  if (supportsVision(modelId)) {
+    // The pixels go along with the message (see runTurn). Name them so the answer can refer to them.
+    const names = images.map((img) => `"${img.name}"`).join(', ')
+    patchMessage(threadId, userId, (m) => ({ ...m, llmContent: `(Attached ${images.length === 1 ? 'image' : 'images, in order'}: ${names})\n\n${m.llmContent ?? ''}` }))
+    return
+  }
+  const imageModel = settingsNow().imageModel
+  if (!imageModel || !supportsVision(imageModel)) {
+    patchMessage(threadId, assistantId, (m) => ({
+      ...m,
+      parts: [
+        ...(m.parts ?? []),
+        {
+          kind: 'notice',
+          text: `${shortModelName(splitModelId(modelId).name)} cannot see images, and no model that can is installed. Get qwen3-vl:4b from the models panel and Hearth will describe your images for it.`
+        }
+      ]
+    }))
+    patchMessage(threadId, userId, (m) => ({
+      ...m,
+      llmContent: `(The user attached ${images.length === 1 ? 'an image' : `${images.length} images`} that you cannot see. Say so if it matters.)\n\n${m.llmContent ?? ''}`
+    }))
+    return
+  }
+  const described: ImageAttachment[] = []
+  for (const img of images) {
+    const reuse = img.description && img.describedBy === imageModel
+    const description = reuse ? img.description! : stopped ? null : await describeImage(threadId, assistantId, img, imageModel)
+    described.push(description ? { ...img, description, describedBy: imageModel } : img)
+  }
+  patchMessage(threadId, userId, (m) => ({ ...m, images: described, llmContent: `${imageBlocks(described)}\n\n${m.llmContent ?? ''}` }))
+}
+
+async function describeImage(threadId: string, assistantId: string, img: ImageAttachment, imageModel: string): Promise<string | null> {
+  const stepId = uid('step')
+  const seer = shortModelName(splitModelId(imageModel).name)
+  const step: ToolStep = {
+    id: stepId,
+    name: 'describe_image',
+    args: { name: img.name, thumb: img.thumb },
+    status: 'running',
+    startedAt: Date.now(),
+    title: `Looking at ${img.name}`,
+    detail: `with ${seer}`
+  }
+  patchMessage(threadId, assistantId, (m) => ({ ...m, parts: [...(m.parts ?? []), { kind: 'tool', step }] }))
+  const data = await imageData(img.id)
+  if (!data) {
+    patchStep(threadId, assistantId, stepId, { status: 'error', error: 'The image file is missing.', endedAt: Date.now() })
+    return null
+  }
+  const settings = settingsNow()
+  const requestId = uid('look')
+  currentRequest = requestId
+  useModels.setState({ activity: 'waiting', activityModel: imageModel })
+  let text = ''
+  let reasoning = ''
+  let failure: string | null = null
+  await new Promise<void>((resolve) => {
+    let timer = 0
+    const off = api.llm.onChatEvent(requestId, (e: ChatEvent) => {
+      if (e.type === 'thinking') reasoning += e.text
+      if (e.type === 'content') {
+        text += e.text
+        useModels.setState({ activity: 'streaming' })
+        if (!timer)
+          timer = window.setTimeout(() => {
+            timer = 0
+            patchStep(threadId, assistantId, stepId, { output: text })
+          }, 100)
+      } else if (e.type === 'done' || e.type === 'error') {
+        off()
+        if (timer) clearTimeout(timer)
+        if (e.type === 'error') failure = e.message
+        resolve()
+      }
+    })
+    api.llm.chat(requestId, {
+      modelId: imageModel,
+      messages: [
+        { role: 'system', content: DESCRIBE },
+        { role: 'user', content: `Describe this image (${img.name}).`, images: [data] }
+      ],
+      temperature: 0.2,
+      contextWindow: settings.contextWindow,
+      keepAlive: settings.keepAlive,
+      think: supportsThinking(imageModel) ? false : undefined,
+      // Some vision models reason before answering even when asked not to;
+      // a tight cap would end the reply before the description starts.
+      maxTokens: 6000
+    })
+  })
+  currentRequest = null
+  // If only reasoning came back, it still holds the transcription: better than nothing.
+  const clean = text.trim() || reasoning.replace(/<\/?think>/g, '').trim()
+  patchStep(threadId, assistantId, stepId, {
+    status: clean ? 'done' : stopped ? 'stopped' : 'error',
+    output: clean,
+    title: clean ? `Looked at ${img.name}` : `Could not read ${img.name}`,
+    error: clean ? undefined : (failure ?? (stopped ? undefined : 'No description came back.')),
+    endedAt: Date.now()
+  })
+  return clean || null
 }
 
 // Context window management: rough token estimate, trim old tool output first.
@@ -467,9 +646,12 @@ async function runTurn(threadId: string, messageId: string): Promise<void> {
   const modelId = msg.modelId!
   const mode = msg.mode ?? 'agent'
   const toolsEnabled = supportsTools(modelId)
-  const tools: ToolSpec[] | undefined = toolsEnabled ? TOOL_SPECS.filter((t) => mode === 'agent' || READ_ONLY_TOOLS.has(t.name)) : undefined
+  const meaning = meaningAvailable()
+  const tools: ToolSpec[] | undefined = toolsEnabled
+    ? TOOL_SPECS.filter((t) => (mode === 'agent' || READ_ONLY_TOOLS.has(t.name)) && (t.name !== 'search_meaning' || meaning))
+    : undefined
   const allowed = new Set((tools ?? []).map((t) => t.name))
-  const system = await buildSystemPrompt(mode, toolsEnabled)
+  const system = await buildSystemPrompt(mode, toolsEnabled, meaning)
   const model = modelById(modelId)
   const contextWindow = settings.contextWindow
   let think = supportsThinking(modelId) ? settings.showThinking : undefined
@@ -477,6 +659,9 @@ async function runTurn(threadId: string, messageId: string): Promise<void> {
   // Order of the last command run and the last file change, to catch "fixed it, never re-ran the tests".
   let lastCommandAt = -1
   let lastChangeAt = -1
+  // A model that can see receives the images of the current request itself.
+  const ownImages = supportsVision(modelId) ? (useChat.getState().threads.find((t) => t.id === threadId)?.messages.find((m, i, all) => all[i + 1]?.id === messageId)?.images ?? []) : []
+  const pixels = (await Promise.all(ownImages.map((img) => imageData(img.id)))).filter((d): d is string => !!d)
   let toolIndex = 0
   let nudged = false
   let trimNoted = false
@@ -502,6 +687,7 @@ async function runTurn(threadId: string, messageId: string): Promise<void> {
     if (!thread) return
     const budget = Math.max(2048, Math.floor(contextWindow * 0.85) - 1500)
     const past = history(thread, messageId)
+    if (pixels.length) past.messages[past.currentStart] = { ...past.messages[past.currentStart], images: pixels }
     const fitted = fitToWindow([{ role: 'system', content: system }, ...past.messages], budget, past.currentStart + 1)
     const messages = fitted.messages
     if (contextLimit) {

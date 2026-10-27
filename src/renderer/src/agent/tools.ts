@@ -1,4 +1,5 @@
 import { applyEdit, editFailureMessage } from '../../../shared/editMatch'
+import { STANDS_OUT } from '../../../shared/semantic'
 import type { DirEntry, ToolCall, ToolSpec } from '../../../shared/types'
 import { api, uid } from '../api'
 import { normalizeRel } from '../lib/paths'
@@ -42,6 +43,19 @@ export const TOOL_SPECS: ToolSpec[] = [
         query: { type: 'string', description: 'Text to look for.' },
         regex: { type: 'boolean', description: 'Treat the query as a regular expression.' },
         path: { type: 'string', description: 'Only search inside this folder. Optional.' }
+      },
+      required: ['query']
+    }
+  },
+  {
+    name: 'search_meaning',
+    description:
+      'Find code by what it does when you do not know the exact words, for example "where passwords are checked" or "the code that sends emails". Returns the most relevant pieces of code with their paths and line numbers. For exact names or text, use search instead.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'What you are looking for, in plain words.' },
+        path: { type: 'string', description: 'Only look inside this folder. Optional.' }
       },
       required: ['query']
     }
@@ -96,7 +110,7 @@ export const TOOL_SPECS: ToolSpec[] = [
   }
 ]
 
-export const READ_ONLY_TOOLS = new Set(['list_files', 'read_file', 'search'])
+export const READ_ONLY_TOOLS = new Set(['list_files', 'read_file', 'search', 'search_meaning'])
 export const TOOL_NAMES = TOOL_SPECS.map((t) => t.name)
 
 export interface Decision {
@@ -169,6 +183,8 @@ export function describeCall(call: ToolCall): Pick<ToolStep, 'title' | 'path' | 
       return { title: `Reading ${path}`, path }
     case 'search':
       return { title: `Searching for "${str(a.query).slice(0, 60)}"` }
+    case 'search_meaning':
+      return { title: `Looking for "${str(a.query).slice(0, 60)}"` }
     case 'edit_file':
       return { title: `Editing ${path}`, path }
     case 'write_file':
@@ -254,6 +270,27 @@ async function search(args: Record<string, unknown>, ctx: ToolContext): Promise<
   if (!res.matches.length) return `No matches for "${query}".`
   const lines = res.matches.map((m) => `${m.path}:${m.line}: ${m.text.trim().slice(0, 200)}`)
   return lines.join('\n') + (res.truncated ? '\n[more matches not shown; narrow the search]' : '')
+}
+
+async function searchMeaning(args: Record<string, unknown>, ctx: ToolContext): Promise<string> {
+  const query = str(args.query).trim()
+  if (!query) throw new Error('search_meaning needs a query.')
+  const under = pathArg(args.path) || undefined
+  const results = await api.index.search(query, 6, under)
+  ctx.update({ title: `Looked for "${query.slice(0, 60)}"`, detail: results.length ? `${results.length} places` : 'nothing found' })
+  if (!results.length) return `Nothing in the project index matches "${query}". Try other words, or use search for exact text.`
+  let budget = 7000
+  const parts: string[] = []
+  if (results[0].standout < STANDS_OUT) parts.push('Nothing in the project clearly matches. These are the closest pieces, which may be unrelated:')
+  for (const r of results) {
+    const lines = r.text.split('\n')
+    const shown = lines.slice(0, 40).join('\n')
+    const block = `${r.path} (lines ${r.start}-${r.end})\n${shown}${lines.length > 40 ? `\n[${lines.length - 40} more lines, use read_file]` : ''}`
+    if (block.length > budget) break
+    budget -= block.length
+    parts.push(block)
+  }
+  return parts.join('\n\n')
 }
 
 async function gateEdit(ctx: ToolContext, always = false): Promise<Decision> {
@@ -401,6 +438,8 @@ export async function executeTool(call: ToolCall, ctx: ToolContext): Promise<str
       return readFile(args, ctx)
     case 'search':
       return search(args, ctx)
+    case 'search_meaning':
+      return searchMeaning(args, ctx)
     case 'edit_file':
       return editFile(args, ctx)
     case 'write_file':

@@ -11,8 +11,8 @@ import type {
 import { splitModelId } from '../../shared/types'
 import { getSettings } from '../settings'
 import { http, joinUrl } from './http'
-import { ollamaChat, ollamaComplete, ollamaKeepAlive, ollamaLoaded, ollamaModels, ollamaPull, ollamaVersion } from './ollama'
-import { openaiChat, openaiComplete, openaiModels } from './openai'
+import { ollamaChat, ollamaComplete, ollamaEmbed, ollamaKeepAlive, ollamaLoaded, ollamaModels, ollamaPull, ollamaVersion } from './ollama'
+import { openaiChat, openaiComplete, openaiEmbed, openaiModels } from './openai'
 import { friendlyNetworkError, readError } from './stream'
 
 function providers(): ProviderConfig[] {
@@ -89,6 +89,18 @@ export async function complete(req: CompletionRequest, signal: AbortSignal): Pro
       : await openaiComplete(provider, name, req, signal)
   } catch (err) {
     if (signal.aborted) return ''
+    throw new Error(friendlyNetworkError(err, provider.baseUrl))
+  }
+}
+
+/** Vectors for a batch of texts, from an embedding model. */
+export async function embed(modelId: string, inputs: string[], signal?: AbortSignal): Promise<number[][]> {
+  const { provider, name } = providerFor(modelId)
+  try {
+    return provider.kind === 'ollama'
+      ? await ollamaEmbed(provider, name, inputs, getSettings().keepAlive, signal)
+      : await openaiEmbed(provider, name, inputs, signal)
+  } catch (err) {
     throw new Error(friendlyNetworkError(err, provider.baseUrl))
   }
 }

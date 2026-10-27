@@ -3,9 +3,27 @@ import { execFileSync } from 'child_process'
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, resolve } from 'path'
-import { startMockOllama, type MockOllama } from './mockOllama'
+import { DESCRIPTION, startMockOllama, type MockOllama } from './mockOllama'
 
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
+
+// A 16 by 12 PNG: small, but a real image the app has to decode and store.
+const PNG = 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAMCAIAAADkharWAAAAG0lEQVR4nGOQk1MiCTEMQg3PKmxIQqMaaKIBAFEi5IEhaEPyAAAAAElFTkSuQmCC'
+
+type SentMessage = { role: string; content: string; images?: string[] }
+
+/** The last user message of the last chat request sent to a model. */
+function lastAsk(model: string): SentMessage {
+  const request = mock.requests.filter((r) => r.path === '/api/chat' && r.body.model === model).pop()
+  expect(request, `a chat request to ${model}`).toBeTruthy()
+  return (request!.body.messages as SentMessage[]).filter((m) => m.role === 'user').pop()!
+}
+
+async function pickChatModel(name: string): Promise<void> {
+  await page.click('.model-pill')
+  await page.locator('.menu-row', { hasText: name }).click()
+  await expect(page.locator('.model-pill-name')).toHaveText(name)
+}
 
 let mock: MockOllama
 let app: ElectronApplication
@@ -20,7 +38,12 @@ test.beforeAll(async () => {
   mkdirSync(join(project, 'src'))
   writeFileSync(join(project, 'hello.txt'), 'hello world\n')
   writeFileSync(join(project, 'src', 'app.js'), 'export const answer = 1\n')
+  writeFileSync(
+    join(project, 'src', 'kittens.js'),
+    '// Feeds every hungry kitten in the shelter.\nexport function feedKittens(shelter) {\n  for (const kitten of shelter.kittens) kitten.fed = true\n}\n'
+  )
   writeFileSync(join(project, 'package.json'), '{ "name": "fixture" }\n')
+  writeFileSync(join(project, 'kitten-error.png'), Buffer.from(PNG, 'base64'))
   // A real repository, so the source control panel has something to show.
   const git = (...args: string[]) => execFileSync('git', ['-C', project, ...args])
   git('init', '-q')
@@ -38,6 +61,9 @@ test.beforeAll(async () => {
       providers: [{ id: 'ollama', kind: 'ollama', name: 'Mock Ollama', baseUrl: mock.url, enabled: true }],
       chatModel: 'ollama::mock-coder:latest',
       autocompleteModel: 'ollama::mock-coder:latest',
+      imageModel: 'ollama::mock-vision:latest',
+      embeddingModel: 'ollama::mock-embed:latest',
+      indexing: true,
       autocompleteEnabled: true,
       showThinking: false,
       agent: { autoApplyEdits: true, autoRunCommands: true, maxSteps: 10 },
@@ -160,6 +186,78 @@ test('commits with a message written by the model', async () => {
   expect(log).toBe('Make the answer 42 and add f()')
   const status = execFileSync('git', ['-C', project, 'status', '--porcelain']).toString().trim()
   expect(status).toBe('')
+})
+
+test('indexes the project and finds code by meaning', async () => {
+  await expect(page.locator('.statusbar .status-button', { hasText: 'Indexed' })).toBeVisible({ timeout: 30_000 })
+  await page.click('.sidebar-head .segment:nth-child(2)')
+  await page.click('.search-mode .segment:nth-child(2)')
+  await page.locator('.search-box input').fill('where do the hungry kittens get fed')
+  const best = page.locator('.meaning-hit').first()
+  await expect(best).toContainText('kittens.js', { timeout: 15_000 })
+  await best.click()
+  await expect(page.locator('.tab.is-active .tab-title')).toContainText('kittens.js')
+  // The file opens with the piece that was found selected.
+  await expect(page.locator('.statusbar')).toContainText(/Ln 4, Col \d+ \(\d+ selected\)/)
+  // Images are not worth embedding; source files are.
+  const embedded = mock.requests.filter((r) => r.path === '/api/embed').flatMap((r) => r.body.input as string[])
+  expect(embedded.some((t) => t.startsWith('src/kittens.js (lines 1-4)'))).toBe(true)
+  expect(embedded.some((t) => t.includes('kitten-error.png'))).toBe(false)
+})
+
+test('the agent searches by meaning', async () => {
+  await page.click('.composer-input')
+  await page.keyboard.type('Search by meaning for where kittens are fed')
+  await page.keyboard.press('Enter')
+  await expect(page.locator('.msg-assistant .md').last()).toContainText('They are fed in', { timeout: 20_000 })
+  const request = mock.requests.filter((r) => r.path === '/api/chat' && r.body.model === 'mock-coder:latest').pop()!
+  const result = (request.body.messages as SentMessage[]).filter((m) => m.role === 'tool').pop()!
+  expect(result.content).toMatch(/^src\/kittens\.js \(lines 1-4\)/)
+  expect(result.content).toContain('kitten.fed = true')
+})
+
+test('a model that can see gets the image and the related code', async () => {
+  await pickChatModel('mock-vision')
+  await page.setInputFiles('.composer-bar input[type=file]', join(project, 'kitten-error.png'))
+  await expect(page.locator('.composer-image')).toHaveCount(1)
+  // kittens.js is open; without it attached, the related code has to be found by meaning.
+  await page.click('.composer-chips .chip.is-suggested .chip-x')
+  await page.click('.composer-input')
+  await page.keyboard.type('Why are the hungry kittens in the shelter not fed?')
+  await page.keyboard.press('Enter')
+  await expect(page.locator('.msg-assistant .md').last()).toContainText('I can see the screenshot', { timeout: 20_000 })
+  await expect(page.locator('.msg-user').last().locator('.msg-image')).toHaveCount(1)
+  await expect(page.locator('.msg-user').last().locator('.chip.is-found', { hasText: 'kittens.js' })).toBeVisible()
+  const ask = lastAsk('mock-vision:latest')
+  expect(ask.images).toEqual([PNG])
+  expect(ask.content).toContain('<snippet path="src/kittens.js" lines="1-4"')
+  // Files that share no meaning with the question stay out.
+  expect(ask.content.match(/<snippet /g)).toHaveLength(1)
+  expect(ask.content).toContain('(Attached image: "kitten-error.png")')
+})
+
+test('a model that cannot see gets the image described', async () => {
+  await pickChatModel('mock-coder')
+  await page.setInputFiles('.composer-bar input[type=file]', join(project, 'kitten-error.png'))
+  await expect(page.locator('.composer-image')).toHaveCount(1)
+  await page.click('.composer-input')
+  await page.keyboard.type('What is wrong here?')
+  await page.keyboard.press('Enter')
+  const look = page.locator('.look-card').last()
+  await expect(look).toContainText('Looked at kitten-error.png', { timeout: 20_000 })
+  await expect(look).toContainText('with mock-vision')
+  await expect(look).toContainText('TypeError')
+  await expect(page.locator('.msg-assistant .md').last()).toContainText('feedKittens gets no shelter', { timeout: 20_000 })
+  expect(lastAsk('mock-vision:latest').images).toEqual([PNG])
+  const ask = lastAsk('mock-coder:latest')
+  expect(ask.images).toBeUndefined()
+  expect(ask.content).toContain('<image name="kitten-error.png" seen_by="mock-vision">')
+  expect(ask.content).toContain(DESCRIPTION)
+  // The full image opens on click.
+  await page.locator('.msg-user').last().locator('.msg-image').click()
+  await expect(page.locator('.lightbox img')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.lightbox')).toHaveCount(0)
 })
 
 test('captures the window for review', async () => {

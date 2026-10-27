@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChatPanel } from './components/Chat'
+import { ChatPanel, Lightbox } from './components/Chat'
 import { CommandPalette } from './components/CommandPalette'
 import { EditorArea } from './components/EditorArea'
 import { Resizer } from './components/Resizer'
@@ -84,6 +84,7 @@ export function App() {
       )}
       <CommandPalette />
       <SettingsSheet />
+      <Lightbox />
       <Toasts />
     </div>
   )

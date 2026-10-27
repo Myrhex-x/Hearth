@@ -1,7 +1,7 @@
 // Any server speaking the OpenAI chat completions dialect: LM Studio,
 // llama.cpp's llama-server, vLLM, Jan, LocalAI, or a remote gateway.
 
-import type { ChatEvent, ChatRequest, CompletionRequest, LlmMessage, ModelInfo, ProviderConfig, ToolCall } from '../../shared/types'
+import type { ChatEvent, ChatRequest, CompletionRequest, LlmMessage, ModelCapability, ModelInfo, ProviderConfig, ToolCall } from '../../shared/types'
 import { modelIdOf } from '../../shared/types'
 import { ThinkSplitter } from '../../shared/think'
 import { http, joinUrl, randomId } from './http'
@@ -16,14 +16,25 @@ export async function openaiModels(p: ProviderConfig): Promise<ModelInfo[]> {
   if (!res.ok) throw new Error(await readError(res))
   const data = (await res.json()) as { data?: { id: string }[] }
   return (data.data ?? [])
-    .filter((m) => m.id && !/embed/i.test(m.id))
+    .filter((m) => m.id)
     .map((m) => ({
       id: modelIdOf(p.id, m.id),
       providerId: p.id,
       providerName: p.name,
       providerKind: 'openai' as const,
-      name: m.id
+      name: m.id,
+      // These servers do not say what a model can do; embedding models announce it in their name.
+      capabilities: /embed/i.test(m.id) ? (['embedding'] as ModelCapability[]) : undefined
     }))
+}
+
+export async function openaiEmbed(p: ProviderConfig, name: string, inputs: string[], signal?: AbortSignal): Promise<number[][]> {
+  const res = await http(joinUrl(p.baseUrl, '/embeddings'), { body: { model: name, input: inputs }, headers: headers(p), signal })
+  if (!res.ok) throw new Error(await readError(res))
+  const data = (await res.json()) as { data?: { embedding: number[]; index?: number }[] }
+  const rows = [...(data.data ?? [])].sort((a, b) => (a.index ?? 0) - (b.index ?? 0)).map((d) => d.embedding)
+  if (rows.length !== inputs.length) throw new Error(`${name} did not return embeddings. Is it an embedding model?`)
+  return rows
 }
 
 function toOpenAiMessage(m: LlmMessage): Record<string, unknown> {
@@ -33,7 +44,7 @@ function toOpenAiMessage(m: LlmMessage): Record<string, unknown> {
       role: 'user',
       content: [
         { type: 'text', text: m.content },
-        ...m.images.map((b64) => ({ type: 'image_url', image_url: { url: `data:image/png;base64,${b64}` } }))
+        ...m.images.map((b64) => ({ type: 'image_url', image_url: { url: `data:${b64.startsWith('/9j/') ? 'image/jpeg' : 'image/png'};base64,${b64}` } }))
       ]
     }
   }

@@ -8,6 +8,7 @@ import { useUi, toast } from '../state/ui'
 import { createEntry, useWorkspace } from '../state/workspace'
 import { gitLetter, useGit } from '../state/git'
 import { ChangesPanel, useGitBadge } from './ChangesPanel'
+import { MeaningSearch } from './MeaningSearch'
 import { basename, dirname } from '../lib/paths'
 import { shortcutLabel } from '../lib/keys'
 import { FileIcon, IconButton, Segmented, Spinner, cx } from './ui'
@@ -315,6 +316,7 @@ function SearchPanel() {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const inputRef = useRef<HTMLInputElement>(null)
   const tick = useUi((s) => s.searchFocusTick)
+  const mode = useUi((s) => s.searchMode)
   const openFile = useEditor((s) => s.openFile)
   const seq = useRef(0)
 
@@ -324,7 +326,7 @@ function SearchPanel() {
   }, [tick])
 
   useEffect(() => {
-    if (!query.trim()) {
+    if (!query.trim() || mode !== 'exact') {
       setResult(null)
       return
     }
@@ -339,7 +341,7 @@ function SearchPanel() {
       }
     }, 260)
     return () => clearTimeout(t)
-  }, [query, opts])
+  }, [query, opts, mode])
 
   const groups = useMemo(() => {
     const map = new Map<string, SearchResult['matches']>()
@@ -359,14 +361,41 @@ function SearchPanel() {
 
   return (
     <div className="search">
-      <div className="search-box">
-        <input ref={inputRef} className="field" placeholder="Search the project" value={query} onChange={(e) => setQuery(e.target.value)} spellCheck={false} />
-        <div className="search-flags">
-          {flag('caseSensitive', 'Match case', <CaseSensitive size={15} strokeWidth={1.7} />)}
-          {flag('wholeWord', 'Whole word', <WholeWord size={15} strokeWidth={1.7} />)}
-          {flag('regex', 'Regular expression', <Regex size={14} strokeWidth={1.7} />)}
-        </div>
+      <div className={cx('search-box', mode === 'meaning' && 'is-meaning')}>
+        <input
+          ref={inputRef}
+          className="field"
+          placeholder={mode === 'meaning' ? 'Describe what you are looking for' : 'Search the project'}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          spellCheck={false}
+        />
+        {mode === 'exact' && (
+          <div className="search-flags">
+            {flag('caseSensitive', 'Match case', <CaseSensitive size={15} strokeWidth={1.7} />)}
+            {flag('wholeWord', 'Whole word', <WholeWord size={15} strokeWidth={1.7} />)}
+            {flag('regex', 'Regular expression', <Regex size={14} strokeWidth={1.7} />)}
+          </div>
+        )}
       </div>
+      <div className="search-mode">
+        <Segmented
+          size="sm"
+          value={mode}
+          onChange={(v) => {
+            useUi.setState({ searchMode: v })
+            inputRef.current?.focus()
+          }}
+          options={[
+            { value: 'exact', label: 'Exact', title: 'Find the exact words' },
+            { value: 'meaning', label: 'Meaning', title: 'Find code by what it does, with a local embedding model' }
+          ]}
+        />
+      </div>
+      {mode === 'meaning' ? (
+        <MeaningSearch query={query} />
+      ) : (
+      <>
       <div className="search-summary">
         {busy && <Spinner size={10} />}
         {result?.error && <span className="error-text">{result.error}</span>}
@@ -416,6 +445,8 @@ function SearchPanel() {
           </div>
         ))}
       </div>
+      </>
+      )}
     </div>
   )
 }

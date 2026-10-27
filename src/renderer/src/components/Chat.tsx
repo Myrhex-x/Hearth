@@ -1,8 +1,11 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElement } from 'react'
+import { createPortal } from 'react-dom'
 import {
   ArrowUp,
   Check,
   Copy,
+  ImagePlus,
+  ScanSearch,
   ChevronDown,
   ChevronRight,
   CircleAlert,
@@ -22,13 +25,14 @@ import { splitModelId } from '../../../shared/types'
 import { isMac } from '../api'
 import { computeDiff } from '../agent/diff'
 import type { AssistantPart, ChatMessage, ContextChip, DiffInfo, FileChange, ToolStep } from '../agent/types'
+import { imageData, isImageFile } from '../lib/images'
 import { fuzzyFilter } from '../lib/fuzzy'
 import { formatDuration, relativeTime, shortModelName } from '../lib/format'
 import { shortcutLabel } from '../lib/keys'
 import { basename, dirname } from '../lib/paths'
 import { useChat, type ChatMode } from '../state/chat'
 import { activeTab, useEditor } from '../state/editor'
-import { supportsTools, useModels } from '../state/models'
+import { chatModels, supportsTools, supportsVision, useModels } from '../state/models'
 import { useSettings } from '../state/settings'
 import { toast, useUi } from '../state/ui'
 import { useWorkspace } from '../state/workspace'
@@ -157,10 +161,15 @@ function EmptyChat() {
 }
 
 function ChipView({ chip, onRemove, suggested }: { chip: ContextChip; onRemove?: () => void; suggested?: boolean }) {
-  const label = chip.kind === 'selection' ? `${basename(chip.path)} ${chip.startLine}-${chip.endLine}` : basename(chip.path)
+  const label = chip.kind === 'file' ? basename(chip.path) : `${basename(chip.path)} ${chip.startLine}-${chip.endLine}`
+  const found = chip.kind === 'snippet'
   return (
-    <span className={cx('chip', suggested && 'is-suggested')} title={chip.path}>
-      <FileIcon path={chip.path} size={12} />
+    <span
+      className={cx('chip', suggested && 'is-suggested', found && 'is-found')}
+      title={found ? `${chip.path}, lines ${chip.startLine} to ${chip.endLine}: found by meaning and given to the model` : chip.path}
+      onClick={found ? () => void useEditor.getState().openFile(chip.path, { preview: true, line: chip.startLine, endLine: chip.endLine }) : undefined}
+    >
+      {found ? <ScanSearch size={12} strokeWidth={1.9} className="chip-found-icon" /> : <FileIcon path={chip.path} size={12} />}
       <span className="chip-label">{label}</span>
       {onRemove && (
         <button className="chip-x" aria-label="Remove" onClick={onRemove}>
@@ -186,10 +195,49 @@ const UserMessage = memo(function UserMessage({ m, editable }: { m: ChatMessage;
           ))}
         </div>
       )}
-      <div className="msg-user-text">{m.text}</div>
+      {!!m.images?.length && (
+        <div className="msg-images">
+          {m.images.map((img) => (
+            <button key={img.id} className="msg-image" title={img.name} onClick={() => useUi.setState({ lightbox: { id: img.id, name: img.name } })}>
+              <img src={img.thumb} alt={img.name} />
+            </button>
+          ))}
+        </div>
+      )}
+      {m.text && <div className="msg-user-text">{m.text}</div>}
     </div>
   )
 })
+
+/** The full-size image, over everything. */
+export function Lightbox() {
+  const open = useUi((s) => s.lightbox)
+  const [src, setSrc] = useState<string | null>(null)
+  useEffect(() => {
+    setSrc(null)
+    if (!open) return
+    let live = true
+    void imageData(open.id).then((data) => {
+      if (live && data) setSrc(`data:${open.id.endsWith('.jpg') ? 'image/jpeg' : `image/${open.id.split('.').pop()}`};base64,${data}`)
+    })
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') useUi.setState({ lightbox: null })
+    }
+    window.addEventListener('keydown', onKey)
+    return () => {
+      live = false
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+  if (!open) return null
+  return createPortal(
+    <div className="scrim is-sheet lightbox" onMouseDown={() => useUi.setState({ lightbox: null })}>
+      {src ? <img src={src} alt={open.name} /> : <Spinner size={16} />}
+      <div className="lightbox-name">{open.name}</div>
+    </div>,
+    document.body
+  )
+}
 
 function Thinking({ part, live }: { part: Extract<AssistantPart, { kind: 'thinking' }>; live: boolean }) {
   const [open, setOpen] = useState(false)
@@ -302,10 +350,54 @@ function StepIcon({ step }: { step: ToolStep }) {
   }
 }
 
+/**
+ * What a vision model wrote about an image. Not Markdown: a transcribed
+ * terminal line like "> app@1.0 test" must stay as written. Fenced blocks are
+ * shown in monospace.
+ */
+function LookText({ text }: { text: string }) {
+  const parts = text.split(/^```[^\n]*\n?/m)
+  return (
+    <>
+      {parts.map((part, i) => {
+        const t = part.replace(/^\n+|\s+$/g, '')
+        if (!t) return null
+        return i % 2 ? (
+          <pre key={i} className="look-code">
+            {t}
+          </pre>
+        ) : (
+          <p key={i}>{t}</p>
+        )
+      })}
+    </>
+  )
+}
+
 function ToolStepView({ step }: { step: ToolStep }) {
   const [expanded, setExpanded] = useState(false)
   const openFile = useEditor((s) => s.openFile)
   const isChange = step.name === 'edit_file' || step.name === 'write_file' || step.name === 'delete_file'
+
+  if (step.name === 'describe_image') {
+    const text = (step.output ?? '').trim()
+    const long = text.split('\n').length > 6 || text.length > 420
+    return (
+      <div className={cx('step-card', 'look-card', `is-${step.status}`)}>
+        <div className="step-card-head">
+          {typeof step.args.thumb === 'string' && <img className="look-thumb" src={step.args.thumb} alt="" />}
+          <span className="look-title">{step.title}</span>
+          <span className="step-state">{step.status === 'running' ? <Spinner size={10} /> : step.detail}</span>
+        </div>
+        {text && (
+          <div className={cx('look-text', long && !expanded && step.status !== 'running' && 'is-clipped')} onClick={() => setExpanded(true)}>
+            <LookText text={text} />
+          </div>
+        )}
+        {step.error && <div className="step-error">{step.error}</div>}
+      </div>
+    )
+  }
 
   if (step.name === 'run_command') {
     const out = (step.output ?? '').trimEnd()
@@ -547,7 +639,7 @@ function ContextMeter() {
 function ModelPicker() {
   const ref = useRef<HTMLButtonElement>(null)
   const [open, setOpen] = useState(false)
-  const models = useModels((s) => s.models)
+  const models = chatModels(useModels((s) => s.models))
   const chatModel = useSettings((s) => s.settings.chatModel)
   const update = useSettings((s) => s.update)
   const current = models.find((m) => m.id === chatModel)
@@ -614,7 +706,11 @@ function Composer() {
   const mode = useChat((s) => s.mode)
   const running = useChat((s) => !!s.runningThread)
   const dismissed = useChat((s) => s.activeFileDismissed)
-  const { setDraft, setMode, send, stop, removeChip, addChip, dismissActiveFile } = useChat.getState()
+  const images = useChat((s) => s.images)
+  const { setDraft, setMode, send, stop, removeChip, addChip, dismissActiveFile, addImages, removeImage } = useChat.getState()
+  const imageModel = useSettings((s) => s.settings.imageModel)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [dragging, setDragging] = useState(false)
   const focusTick = useUi((s) => s.chatFocusTick)
   const chatModel = useSettings((s) => s.settings.chatModel)
   useModels((s) => s.models)
@@ -666,16 +762,58 @@ function Composer() {
 
   const submit = () => {
     if (running) return
-    if (!draft.trim()) return
+    if (!draft.trim() && !images.length) return
     void send(draft)
   }
 
+  const attachFiles = (files: File[]) => {
+    const pictures = files.filter(isImageFile)
+    if (pictures.length) void addImages(pictures.map((f) => ({ blob: f, name: f.name || 'image.png' })))
+    if (pictures.length < files.length) toast('Only images can be attached here. Type @ to attach a project file.')
+  }
+
   const noTools = chatModel && !supportsTools(chatModel)
+  const canSee = supportsVision(chatModel) || (!!imageModel && supportsVision(imageModel))
+  useModels((s) => s.models)
 
   return (
-    <div className="composer-wrap">
+    <div
+      className="composer-wrap"
+      onDragOver={(e) => {
+        if ([...e.dataTransfer.items].some((i) => i.kind === 'file')) {
+          e.preventDefault()
+          setDragging(true)
+        }
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false)
+      }}
+      onDrop={(e) => {
+        setDragging(false)
+        if (!e.dataTransfer.files.length) return
+        e.preventDefault()
+        attachFiles([...e.dataTransfer.files])
+      }}
+    >
       {mention && <MentionMenu query={mention.query} onPick={pickMention} index={mentionIndex} setCount={setMentionCount} />}
-      <div className={cx('composer', running && 'is-running')}>
+      <div className={cx('composer', running && 'is-running', dragging && 'is-dropping')}>
+        {images.length > 0 && (
+          <div className="composer-images">
+            {images.map((img, i) => (
+              <span key={img.id} className="composer-image" title={`${img.name}, ${img.width} by ${img.height}`}>
+                <img src={img.thumb} alt={img.name} onClick={() => useUi.setState({ lightbox: { id: img.id, name: img.name } })} />
+                <button className="composer-image-x" aria-label="Remove image" onClick={() => removeImage(i)}>
+                  <X size={10} strokeWidth={2.6} />
+                </button>
+              </span>
+            ))}
+            {!canSee && (
+              <span className="composer-image-note">
+                No installed model can see images. Get qwen3-vl:4b from the models panel.
+              </span>
+            )}
+          </div>
+        )}
         {(chips.length > 0 || suggested) && (
           <div className="composer-chips">
             {suggested && <ChipView chip={{ kind: 'file', path: suggested }} suggested onRemove={() => dismissActiveFile(suggested)} />}
@@ -726,6 +864,13 @@ function Composer() {
             }
           }}
           onClick={(e) => updateMention(e.currentTarget.value, e.currentTarget.selectionStart)}
+          onPaste={(e) => {
+            const files = [...e.clipboardData.files].filter(isImageFile)
+            if (!files.length) return
+            // A screenshot: attach it. Text that came along still pastes as usual.
+            if (!e.clipboardData.getData('text/plain')) e.preventDefault()
+            attachFiles(files)
+          }}
         />
         <div className="composer-bar">
           <Segmented<ChatMode>
@@ -739,6 +884,20 @@ function Composer() {
           />
           <ModelPicker />
           {noTools && <span className="composer-warning" title="This model cannot use tools">no tools</span>}
+          <IconButton label="Attach an image (or paste or drop one)" className="sm composer-attach" onClick={() => fileRef.current?.click()}>
+            <ImagePlus size={14} strokeWidth={1.8} />
+          </IconButton>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            multiple
+            hidden
+            onChange={(e) => {
+              attachFiles([...(e.target.files ?? [])])
+              e.target.value = ''
+            }}
+          />
           <span className="spacer" />
           <ContextMeter />
           {running ? (
@@ -746,7 +905,7 @@ function Composer() {
               <Square size={11} fill="currentColor" strokeWidth={0} />
             </button>
           ) : (
-            <button className="send" disabled={!draft.trim()} onClick={submit} title="Send  ↩">
+            <button className="send" disabled={!draft.trim() && !images.length} onClick={submit} title="Send  ↩">
               <ArrowUp size={15} strokeWidth={2.4} />
             </button>
           )}

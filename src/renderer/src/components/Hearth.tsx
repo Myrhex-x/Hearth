@@ -4,7 +4,7 @@ import type { ModelInfo } from '../../../shared/types'
 import { splitModelId } from '../../../shared/types'
 import { api } from '../api'
 import { formatBytes, shortModelName, timeUntil } from '../lib/format'
-import { useModels } from '../state/models'
+import { chatModels, embeddingModels, useModels } from '../state/models'
 import { useSettings } from '../state/settings'
 import { useUi } from '../state/ui'
 import { Button, Ember, Popover, Spinner, Toggle, cx, type EmberState } from './ui'
@@ -49,6 +49,8 @@ export function HearthIndicator() {
 
 const SUGGESTED = [
   { name: 'qwen2.5-coder:1.5b', note: 'Fast autocomplete', size: 'about 1 GB' },
+  { name: 'qwen3-embedding:0.6b', note: 'Search by meaning', size: 'about 640 MB' },
+  { name: 'qwen3-vl:4b', note: 'Reads images, uses tools', size: 'about 3.3 GB' },
   { name: 'qwen2.5-coder:7b', note: 'Autocomplete and chat', size: 'about 4.7 GB' },
   { name: 'qwen3:8b', note: 'Agent on 16 GB machines', size: 'about 5.2 GB' },
   { name: 'qwen3:14b', note: 'Stronger agent', size: 'about 9.3 GB' },
@@ -91,7 +93,9 @@ export function ModelsPanel() {
   const chatLoaded = loaded.find((l) => l.id === settings.chatModel)
   const ollama = statuses.find((s) => s.kind === 'ollama' && s.ok)
   const anyOnline = statuses.some((s) => s.ok)
-  const fim = models.filter((m) => !m.capabilities || m.capabilities.includes('insert'))
+  const talkers = chatModels(models)
+  const embedders = embeddingModels(models)
+  const fim = talkers.filter((m) => !m.capabilities || m.capabilities.includes('insert'))
   const installed = new Set(models.map((m) => m.name))
 
   let headline: string
@@ -155,11 +159,11 @@ export function ModelsPanel() {
         </div>
       )}
 
-      {models.length > 0 && (
+      {talkers.length > 0 && (
         <section className="models-section">
           <div className="section-label">Chat and agent</div>
           <div className="model-list">
-            {models.map((m) => {
+            {talkers.map((m) => {
               const l = loaded.find((x) => x.id === m.id)
               return (
                 <button key={m.id} className={cx('model-row', m.id === settings.chatModel && 'is-on')} onClick={() => void update({ chatModel: m.id })}>
@@ -198,6 +202,27 @@ export function ModelsPanel() {
             </select>
           ) : (
             <p className="hint">Autocomplete needs a fill-in-the-middle model. qwen2.5-coder:1.5b is small and quick.</p>
+          )}
+        </section>
+      )}
+
+      {models.length > 0 && (
+        <section className="models-section">
+          <div className="section-label row between">
+            <span>Search by meaning</span>
+            <Toggle checked={settings.indexing} onChange={(v) => void update({ indexing: v })} label="Search by meaning" />
+          </div>
+          {embedders.length ? (
+            <select className="select" value={settings.embeddingModel ?? ''} onChange={(e) => void update({ embeddingModel: e.target.value || null })}>
+              <option value="">None</option>
+              {embedders.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {shortModelName(m.name)}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <p className="hint">Finding code by what it does needs a small embedding model. qwen3-embedding:0.6b understands code well.</p>
           )}
         </section>
       )}

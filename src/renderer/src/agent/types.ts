@@ -38,8 +38,22 @@ export type AssistantPart =
   | { kind: 'tool'; step: ToolStep }
   | { kind: 'notice'; text: string }
 
+export interface ImageAttachment {
+  /** File name in Hearth's attachments folder (content hash). */
+  id: string
+  name: string
+  width: number
+  height: number
+  /** Small preview for the chat, as a data URL. */
+  thumb: string
+  /** Written by the image model when the chat model cannot see. */
+  description?: string
+  describedBy?: string
+}
+
 export interface ContextChip {
-  kind: 'file' | 'selection'
+  /** "snippet" is code Hearth found by meaning for a model that cannot search. */
+  kind: 'file' | 'selection' | 'snippet'
   path: string
   startLine?: number
   endLine?: number
@@ -60,6 +74,7 @@ export interface ChatMessage {
   createdAt: number
   text?: string
   chips?: ContextChip[]
+  images?: ImageAttachment[]
   /** What the model actually received for this user message, context included. */
   llmContent?: string
   parts?: AssistantPart[]

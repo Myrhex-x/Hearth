@@ -119,16 +119,46 @@ function sizeScore(m: ModelInfo): number {
 }
 
 /** Chooses sensible models the first time, or when the chosen one disappeared. */
+/** Embedding models only turn text into numbers: they can never chat or complete code. */
+export function isEmbeddingModel(m: ModelInfo): boolean {
+  return !!m.capabilities?.includes('embedding') || /embed/i.test(m.name)
+}
+
+export function chatModels(models: ModelInfo[]): ModelInfo[] {
+  return models.filter((m) => !isEmbeddingModel(m))
+}
+
+export function visionModels(models: ModelInfo[]): ModelInfo[] {
+  return models.filter((m) => !isEmbeddingModel(m) && m.capabilities?.includes('vision'))
+}
+
+export function embeddingModels(models: ModelInfo[]): ModelInfo[] {
+  return models.filter(isEmbeddingModel)
+}
+
 function pickDefaults(models: ModelInfo[]): void {
   const s = settingsNow()
   const ids = new Set(models.map((m) => m.id))
-  const patch: { chatModel?: string; autocompleteModel?: string } = {}
+  const patch: { chatModel?: string; autocompleteModel?: string; imageModel?: string; embeddingModel?: string } = {}
+  const talkers = chatModels(models)
   if (!s.chatModel || !ids.has(s.chatModel)) {
-    const ranked = [...models].sort((a, b) => chatRank(b) - chatRank(a))
+    const ranked = [...talkers].sort((a, b) => chatRank(b) - chatRank(a))
     if (ranked[0]) patch.chatModel = ranked[0].id
   }
+  if (!s.imageModel || !ids.has(s.imageModel)) {
+    // Small and quick: it only describes what it sees for the chat model.
+    const seers = visionModels(models).sort((a, b) => sizeScore(a) - sizeScore(b))
+    const pick = seers.find((m) => /qwen3-vl|qwen2\.5vl|gemma3|minicpm|llava|granite.*vision|moondream|mistral-small3/i.test(m.name) && sizeScore(m) <= 9) ?? seers[0]
+    if (pick) patch.imageModel = pick.id
+  }
+  if (!s.embeddingModel || !ids.has(s.embeddingModel)) {
+    const order = [/qwen3-embedding/i, /nomic-embed/i, /embeddinggemma/i, /snowflake-arctic-embed/i, /mxbai-embed/i, /bge-m3/i]
+    const embedders = embeddingModels(models)
+    const pick = order.map((re) => embedders.find((m) => re.test(m.name))).find(Boolean) ?? embedders[0]
+    if (pick) patch.embeddingModel = pick.id
+  }
   if (!s.autocompleteModel || !ids.has(s.autocompleteModel)) {
-    const fim = models.filter((m) => m.capabilities?.includes('insert'))
+    const fim = talkers.filter((m) => m.capabilities?.includes('insert'))
     fim.sort((a, b) => sizeScore(a) - sizeScore(b))
     const coder = fim.find((m) => /coder|starcoder|codestral|deepseek-coder|codegemma/i.test(m.name) && sizeScore(m) <= 8)
     const pick = coder ?? fim.find((m) => sizeScore(m) <= 8) ?? fim[0]
@@ -162,6 +192,10 @@ export function supportsTools(id: string | null | undefined): boolean {
 
 export function supportsThinking(id: string | null | undefined): boolean {
   return !!modelById(id)?.capabilities?.includes('thinking')
+}
+
+export function supportsVision(id: string | null | undefined): boolean {
+  return !!modelById(id)?.capabilities?.includes('vision')
 }
 
 let pollTimer: number | null = null

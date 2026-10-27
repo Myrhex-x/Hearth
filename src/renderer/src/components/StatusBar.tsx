@@ -1,9 +1,10 @@
-import { CircleAlert, GitBranch, Sparkles } from 'lucide-react'
+import { CircleAlert, GitBranch, ScanSearch, Sparkles } from 'lucide-react'
 import { splitModelId } from '../../../shared/types'
 import { shortModelName } from '../lib/format'
 import { languageLabel } from '../lib/monaco'
 import { activeTab, editorHost, useEditor } from '../state/editor'
 import { useModels } from '../state/models'
+import { useMeaning } from '../state/meaning'
 import { useSettings } from '../state/settings'
 import { useUi } from '../state/ui'
 import { useWorkspace } from '../state/workspace'
@@ -21,6 +22,12 @@ export function StatusBar() {
   const showEditorInfo = tab?.kind === 'file' && model
 
   const ac = settings.autocompleteModel ? shortModelName(splitModelId(settings.autocompleteModel).name) : null
+  const index = useMeaning((s) => s.status)
+  const openMeaning = () => {
+    if (!settings.layout.sidebarVisible) void useSettings.getState().update({ layout: { sidebarVisible: true } })
+    useUi.setState({ sidebarTab: 'search', searchMode: 'meaning' })
+    useUi.getState().focusSearch()
+  }
 
   return (
     <footer className="statusbar">
@@ -33,6 +40,24 @@ export function StatusBar() {
         )}
       </div>
       <div className="status-right">
+        {index.state === 'indexing' && (
+          <button className="status-item status-button" title="Building the index for search by meaning" onClick={openMeaning}>
+            <Spinner size={9} />
+            {index.total ? `Indexing ${Math.round((index.done / index.total) * 100)}%` : 'Indexing'}
+          </button>
+        )}
+        {index.state === 'ready' && (
+          <button className="status-item status-button is-quiet" title={`Search by meaning: ${index.files.toLocaleString()} files, ${index.chunks.toLocaleString()} pieces`} onClick={openMeaning}>
+            <ScanSearch size={12} strokeWidth={1.8} />
+            Indexed
+          </button>
+        )}
+        {index.state === 'error' && (
+          <button className="status-item status-button tone-rose" title={index.error} onClick={openMeaning}>
+            <CircleAlert size={12} />
+            Index
+          </button>
+        )}
         {showEditorInfo && cursor && (
           <span className="status-item">
             Ln {cursor.line}, Col {cursor.column}

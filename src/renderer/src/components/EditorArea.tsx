@@ -6,7 +6,7 @@ import { attachGitGutter } from '../editor/gitGutter'
 import { formatBytes } from '../lib/format'
 import { monaco, themeName } from '../lib/monaco'
 import { basename, dirname } from '../lib/paths'
-import { diffModelsFor, editorHost, getEntry, useEditor, viewStateFor, type Tab } from '../state/editor'
+import { diffModelsFor, editorHost, getEntry, revealPending, useEditor, viewStateFor, type Tab } from '../state/editor'
 import { useSettings } from '../state/settings'
 import { useUi } from '../state/ui'
 import { FileIcon, Kbd, Logo, cx } from './ui'
@@ -202,6 +202,8 @@ function CodeHost({ visible }: { visible: boolean }) {
     ed.focus()
     const pos = ed.getPosition()
     useUi.setState({ cursor: pos ? { line: pos.lineNumber, column: pos.column, selected: 0 } : null })
+    // Last, so the status bar hears about the selection.
+    revealPending(tab.path)
   }, [tab?.id, tab?.kind])
 
   return <div className={cx('code-host', !visible && 'is-hidden')} ref={hostRef} />

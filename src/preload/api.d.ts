@@ -22,7 +22,9 @@ import type {
   WriteOptions,
   GitStatus,
   GitChangeSummary,
-  UpdateInfo
+  UpdateInfo,
+  IndexStatus,
+  MeaningResult
 } from '../shared/types'
 
 type Unsubscribe = () => void
@@ -92,6 +94,17 @@ export interface HearthApi {
     kill(id: string): void
     onData(id: string, cb: (data: string) => void): Unsubscribe
     onExit(id: string, cb: (code: number) => void): Unsubscribe
+  }
+  index: {
+    status(): Promise<IndexStatus>
+    search(query: string, limit?: number, under?: string): Promise<MeaningResult[]>
+    rebuild(): Promise<void>
+    onStatus(cb: (status: IndexStatus) => void): Unsubscribe
+  }
+  attachments: {
+    /** Stores an image (base64 without the data: prefix) and returns its id. */
+    save(base64: string, mime: string): Promise<string>
+    read(id: string): Promise<string | null>
   }
   git: {
     status(): Promise<GitStatus>
