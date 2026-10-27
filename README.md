@@ -150,6 +150,7 @@ Other scripts:
 | `npm test` | Unit tests (edit matching, paths, streaming, tool parsing, search ranking, model downloads) |
 | `npm run e2e` | Drives the real app against a scripted mock Ollama server |
 | `npm run dist:mac` | Packages a `.dmg` and `.zip` into `release/` |
+| `npm run dist:mas` | Packages the Mac App Store edition, see [docs/app-store.md](docs/app-store.md) |
 | `npm run dist:win` | Packages a Windows installer into `release/` |
 
 Every push runs the unit and end-to-end tests on Windows, macOS and Linux in GitHub Actions. Tagging a version (`git tag v0.3.0 && git push --tags`) builds and publishes the installers.

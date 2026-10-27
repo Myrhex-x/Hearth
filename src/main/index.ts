@@ -7,7 +7,7 @@ import type { AppInfo, ChatRequest, CompletionRequest, ContextMenuItem, IndexSta
 import { readAttachment, saveAttachment } from './attachments'
 import { SemanticIndex } from './semanticIndex'
 import { engineCatalog, engineInfo, engineSettingsChanged, modelsDir, removeModel, stopEngine } from './engine'
-import { NEEDS_PERMISSION, storeEdition } from './edition'
+import { clearStaleInstanceLock, NEEDS_PERMISSION, storeEdition } from './edition'
 import { abortCommand, runCommand } from './exec'
 import * as git from './git'
 import * as llm from './llm'
@@ -532,6 +532,7 @@ function registerIpc(): void {
   handle('git:summary', (sender) => git.gitChangeSummary(ws(sender).root))
 }
 
+clearStaleInstanceLock(app.getPath('userData'))
 const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {
   app.quit()

@@ -1,5 +1,6 @@
 // electron-builder hook: fail the build if the model engine is missing, and
 // make node-pty's spawn-helper and the engine executable in the packaged app.
+const { execFileSync } = require('child_process')
 const { chmodSync, existsSync, readdirSync, statSync } = require('fs')
 const { join } = require('path')
 const { Arch } = require('electron-builder')
@@ -35,6 +36,8 @@ exports.default = async function afterPack(context) {
     return
   }
   chmodSync(server, 0o755)
+  // App Store Connect refuses a Mac app with a quarantined file inside.
+  if (mac) execFileSync('xattr', ['-dr', 'com.apple.quarantine', join(resources, '..', '..')])
   const unpacked = join(resources, 'app.asar.unpacked')
   if (!existsSync(unpacked)) return
   for (const file of walk(unpacked, [])) chmodSync(file, 0o755)

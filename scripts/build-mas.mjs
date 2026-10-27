@@ -9,6 +9,10 @@
 //       "Mac Installer Distribution" certificates in the keychain.
 //       Lands in release/Hearth-<version>-mas-arm64.pkg.
 //
+//   MAS_BUILD_NUMBER=2 ...
+//       App Store Connect takes each build number once per version: set a
+//       new one to upload the same version again. It defaults to the version.
+//
 // The Team ID stays out of the repository: it only goes into build/.mas/,
 // which git ignores. docs/app-store.md walks through the whole submission.
 
@@ -26,6 +30,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const local = process.argv.includes('--local')
 const team = process.env.APPLE_TEAM_ID ?? ''
 const profile = process.env.MAS_PROVISIONING_PROFILE ?? ''
+const buildNumber = process.env.MAS_BUILD_NUMBER ?? ''
 
 function fail(message) {
   console.error(`build-mas: ${message}`)
@@ -34,6 +39,7 @@ function fail(message) {
 
 if (!/^[A-Z0-9]{10}$/.test(team)) fail('set APPLE_TEAM_ID to the 10-character Team ID from developer.apple.com, Membership.')
 if (!local && !existsSync(profile)) fail('set MAS_PROVISIONING_PROFILE to the Mac App Store provisioning profile for dev.myrhex.hearth.')
+if (buildNumber && !/^\d+(\.\d+){0,2}$/.test(buildNumber)) fail('MAS_BUILD_NUMBER is one to three numbers separated by dots, like 2 or 0.4.0.')
 if (!existsSync(join(root, 'out', 'main', 'index.js'))) fail('build the app first: npx electron-vite build')
 if (!existsSync(join(root, 'engine', 'mac-arm64', 'llama-server'))) execFileSync(process.execPath, [join(root, 'scripts', 'fetch-engine.mjs'), '--target', 'mac-arm64'], { stdio: 'inherit' })
 
@@ -43,6 +49,7 @@ const entitlements = join(generated, 'entitlements.mas.plist')
 writeFileSync(entitlements, readFileSync(join(root, 'build', 'entitlements.mas.plist'), 'utf8').replaceAll('TEAM_ID', team))
 
 const config = yaml.load(readFileSync(join(root, 'electron-builder.yml'), 'utf8'))
+if (buildNumber) config.buildVersion = buildNumber
 config.mas = {
   category: 'public.app-category.developer-tools',
   icon: 'build/icon.icns',
