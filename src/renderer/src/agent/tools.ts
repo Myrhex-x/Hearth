@@ -1,5 +1,6 @@
 import { applyEdit, editFailureMessage } from '../../../shared/editMatch'
 import { STANDS_OUT } from '../../../shared/semantic'
+import { linesDropped, losesMostOfFile } from '../../../shared/rewrite'
 import type { DirEntry, ToolCall, ToolSpec } from '../../../shared/types'
 import { api, uid } from '../api'
 import { normalizeRel } from '../lib/paths'
@@ -341,6 +342,16 @@ async function writeFile(args: Record<string, unknown>, ctx: ToolContext): Promi
   if (before !== null && before.replace(/\r\n/g, '\n') === content.replace(/\r\n/g, '\n')) {
     ctx.update({ title: `No change to ${path}`, path })
     return `${path} already has this content.`
+  }
+  // Asked to add a test, small models often "rewrite" the file with that test alone. Stop that
+  // once; calling write_file again goes through, for when replacing the file is what the user wants.
+  const warned = `rewrite-warned:${path}`
+  if (before !== null && losesMostOfFile(before, content) && !ctx.seen.has(warned)) {
+    ctx.seen.add(warned)
+    const { total, dropped } = linesDropped(before, content)
+    throw new Error(
+      `This would remove ${dropped} of the ${total} lines already in ${path}. To add to a file or change part of it, use edit_file (an empty old_text adds at the end). If replacing the whole file is really what the user asked for, call write_file again with the full new content.`
+    )
   }
   // Keep Windows line endings in files that use them.
   const finalContent = before !== null && /\r\n/.test(before) ? content.replace(/\r?\n/g, '\r\n') : content

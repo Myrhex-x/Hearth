@@ -31,32 +31,43 @@ export const WATCHDOG_SH = [
 // Windows has no sh: Hearth's own executable runs this as Node. A killed
 // parent does not always end the pipe there, so it also checks on Hearth itself.
 export const WATCHDOG_JS = `const { spawn, spawnSync } = require('child_process')
+const { appendFileSync } = require('fs')
 const [parent, command, ...args] = process.argv.slice(2)
+// For the tests: what the watchdog saw and did.
+const log = (m) => process.env.HEARTH_WATCHDOG_LOG && appendFileSync(process.env.HEARTH_WATCHDOG_LOG, new Date().toISOString() + ' ' + m + '\\n')
 const child = spawn(command, args, { stdio: ['ignore', 'inherit', 'inherit'], windowsHide: true })
+log('started, parent ' + parent + ', server ' + child.pid)
 let stopping = false
-function stop() {
+function stop(why) {
   if (stopping) return
   stopping = true
-  if (child.pid && process.platform === 'win32') spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true })
-  else child.kill('SIGTERM')
+  log('stopping: ' + why)
+  if (child.pid && process.platform === 'win32') {
+    const r = spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, encoding: 'utf8' })
+    log('taskkill exited ' + r.status + ' ' + (r.error ? r.error.message : '') + ' ' + (r.stderr || '').trim())
+  } else child.kill('SIGTERM')
   process.exit(0)
 }
-process.stdin.on('end', stop)
-process.stdin.on('close', stop)
-process.stdin.on('error', stop)
+process.stdin.on('end', () => stop('input ended'))
+process.stdin.on('close', () => stop('input closed'))
+process.stdin.on('error', (e) => stop('input error ' + e.code))
 process.stdin.resume()
 setInterval(() => {
   try {
     process.kill(Number(parent), 0)
-  } catch {
-    stop()
+  } catch (e) {
+    stop('parent gone ' + e.code)
   }
 }, 1000)
 child.on('error', (err) => {
+  log('server error ' + err.message)
   console.error(err.message)
   process.exit(1)
 })
-child.on('exit', (code) => process.exit(code ?? 1))
+child.on('exit', (code) => {
+  log('server exited ' + code)
+  process.exit(code ?? 1)
+})
 `
 
 export interface Launch {

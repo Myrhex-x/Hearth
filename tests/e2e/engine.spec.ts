@@ -1,6 +1,6 @@
 import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test'
 import { execFileSync } from 'child_process'
-import { mkdtempSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, resolve } from 'path'
 import type { HearthApi } from '../../src/preload/api'
@@ -29,11 +29,11 @@ function running(pid: number): boolean {
   }
 }
 
-async function launchHearth(): Promise<void> {
+async function launchHearth(extra: Record<string, string> = {}): Promise<void> {
   const exe = process.env.HEARTH_EXE
   const args = exe ? [] : [resolve(__dirname, '../../out/main/index.js')]
   if (process.platform === 'linux') args.push('--no-sandbox')
-  const env = { ...process.env, HEARTH_USER_DATA: userData, HEARTH_TEST_MODELS: 'real' }
+  const env = { ...process.env, HEARTH_USER_DATA: userData, HEARTH_TEST_MODELS: 'real', ...extra }
   app = await electron.launch(exe ? { executablePath: exe, args, env } : { args, env })
   closed = false
   page = await app.firstWindow()
@@ -131,7 +131,9 @@ test('the engine stops with Hearth', async () => {
 })
 
 test('the engine stops when Hearth is killed', async () => {
-  await launchHearth()
+  const watchdogLog = join(userData, 'watchdog.log')
+  await launchHearth({ HEARTH_WATCHDOG_LOG: watchdogLog })
+  test.info().attachments.push({ name: 'watchdog log', path: watchdogLog, contentType: 'text/plain' })
   await page.evaluate(() => (globalThis as unknown as InPage).hearth.llm.warm('builtin::stories:260k', '30m'))
   const { pid } = JSON.parse(readFileSync(join(userData, 'engine.pid'), 'utf8')) as { pid: number }
   expect(running(pid)).toBe(true)
@@ -139,6 +141,10 @@ test('the engine stops when Hearth is killed', async () => {
   // No quit, no cleanup: like a crash or Force Quit.
   app.process().kill('SIGKILL')
   closed = true
-  await expect.poll(() => running(pid), { timeout: 15_000 }).toBe(false)
-  await expect.poll(modelProcesses, { timeout: 20_000 }).toBe(0)
+  try {
+    await expect.poll(() => running(pid), { timeout: 15_000 }).toBe(false)
+    await expect.poll(modelProcesses, { timeout: 20_000 }).toBe(0)
+  } finally {
+    if (process.platform === 'win32') console.log(`watchdog log:\n${existsSync(watchdogLog) ? readFileSync(watchdogLog, 'utf8') : '(none)'}`)
+  }
 })
