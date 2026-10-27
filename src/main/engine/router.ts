@@ -28,8 +28,8 @@ export const WATCHDOG_SH = [
   'exit "$code"'
 ].join('\n')
 
-// Windows has no sh: Hearth's own executable runs this as Node. A killed
-// parent does not always end the pipe there, so it also checks on Hearth itself.
+// Windows has no sh: Hearth's own executable runs this as Node. Besides the
+// pipe, it checks on Hearth itself once a second.
 export const WATCHDOG_JS = `const { spawn, spawnSync } = require('child_process')
 const { appendFileSync } = require('fs')
 const [parent, command, ...args] = process.argv.slice(2)

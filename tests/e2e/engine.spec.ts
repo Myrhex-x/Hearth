@@ -138,13 +138,16 @@ test('the engine stops when Hearth is killed', async () => {
   const { pid } = JSON.parse(readFileSync(join(userData, 'engine.pid'), 'utf8')) as { pid: number }
   expect(running(pid)).toBe(true)
   expect(modelProcesses()).toBeGreaterThan(0)
-  // No quit, no cleanup: like a crash or Force Quit.
-  app.process().kill('SIGKILL')
+  // No quit, no cleanup: like a crash or Force Quit. On Windows, Playwright
+  // starts Hearth through cmd.exe, so app.process() is that shell, not Hearth.
+  const hearth = await app.evaluate(() => process.pid)
+  process.kill(hearth, 'SIGKILL')
   closed = true
   try {
     await expect.poll(() => running(pid), { timeout: 15_000 }).toBe(false)
     await expect.poll(modelProcesses, { timeout: 20_000 }).toBe(0)
-  } finally {
-    if (process.platform === 'win32') console.log(`watchdog log:\n${existsSync(watchdogLog) ? readFileSync(watchdogLog, 'utf8') : '(none)'}`)
+  } catch (err) {
+    console.log(`watchdog log:\n${existsSync(watchdogLog) ? readFileSync(watchdogLog, 'utf8') : '(none)'}`)
+    throw err
   }
 })
