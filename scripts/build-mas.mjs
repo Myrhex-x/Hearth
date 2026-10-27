@@ -9,9 +9,9 @@
 //       "Mac Installer Distribution" certificates in the keychain.
 //       Lands in release/Hearth-<version>-mas-arm64.pkg.
 //
-//   MAS_BUILD_NUMBER=2 ...
-//       App Store Connect takes each build number once per version: set a
-//       new one to upload the same version again. It defaults to the version.
+// Each build is numbered with the time it was made, in UTC, like 2026.1027.1530:
+// App Store Connect takes a Mac build only when its number is higher than
+// every build uploaded before, whatever the version.
 //
 // The Team ID stays out of the repository: it only goes into build/.mas/,
 // which git ignores. docs/app-store.md walks through the whole submission.
@@ -30,7 +30,6 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const local = process.argv.includes('--local')
 const team = process.env.APPLE_TEAM_ID ?? ''
 const profile = process.env.MAS_PROVISIONING_PROFILE ?? ''
-const buildNumber = process.env.MAS_BUILD_NUMBER ?? ''
 
 function fail(message) {
   console.error(`build-mas: ${message}`)
@@ -39,7 +38,14 @@ function fail(message) {
 
 if (!/^[A-Z0-9]{10}$/.test(team)) fail('set APPLE_TEAM_ID to the 10-character Team ID from developer.apple.com, Membership.')
 if (!local && !existsSync(profile)) fail('set MAS_PROVISIONING_PROFILE to the Mac App Store provisioning profile for dev.myrhex.hearth.')
-if (buildNumber && !/^\d+(\.\d+){0,2}$/.test(buildNumber)) fail('MAS_BUILD_NUMBER is one to three numbers separated by dots, like 2 or 0.4.0.')
+if (!local) {
+  // Both certificates now, rather than a build that fails at its very end without them.
+  const identities = execFileSync('security', ['find-identity', '-v'], { encoding: 'utf8' }).split('\n')
+  const has = (type) => identities.some((line) => line.includes(`"${type}: `) && line.includes(`(${team})"`))
+  if (!has('Apple Distribution') && !has('3rd Party Mac Developer Application')) fail(`no Apple Distribution certificate for team ${team} in the keychain.`)
+  // The keychain names a Mac Installer Distribution certificate this way.
+  if (!has('3rd Party Mac Developer Installer')) fail(`no Mac Installer Distribution certificate for team ${team} in the keychain.`)
+}
 if (!existsSync(join(root, 'out', 'main', 'index.js'))) fail('build the app first: npx electron-vite build')
 if (!existsSync(join(root, 'engine', 'mac-arm64', 'llama-server'))) execFileSync(process.execPath, [join(root, 'scripts', 'fetch-engine.mjs'), '--target', 'mac-arm64'], { stdio: 'inherit' })
 
@@ -49,7 +55,8 @@ const entitlements = join(generated, 'entitlements.mas.plist')
 writeFileSync(entitlements, readFileSync(join(root, 'build', 'entitlements.mas.plist'), 'utf8').replaceAll('TEAM_ID', team))
 
 const config = yaml.load(readFileSync(join(root, 'electron-builder.yml'), 'utf8'))
-if (buildNumber) config.buildVersion = buildNumber
+const now = new Date()
+config.buildVersion = `${now.getUTCFullYear()}.${(now.getUTCMonth() + 1) * 100 + now.getUTCDate()}.${now.getUTCHours() * 100 + now.getUTCMinutes()}`
 config.mas = {
   category: 'public.app-category.developer-tools',
   icon: 'build/icon.icns',
@@ -63,7 +70,8 @@ config.mas = {
   ...(local
     ? // Ad-hoc: no certificate, and no application identifier, which macOS only accepts with a profile.
       { identity: '-', preAutoEntitlements: false }
-    : { provisioningProfile: profile })
+    : // The team's certificates, found by Team ID. Left unset, the mac section's ad-hoc identity would carry over.
+      { identity: team, provisioningProfile: profile })
 }
 
 // electron-builder reads Info.plist additions from the mac section, also for App Store builds.

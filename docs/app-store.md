@@ -58,8 +58,8 @@ TestFlight is the place to check both, before submitting.
 1. In [App Store Connect](https://appstoreconnect.apple.com), open Business and accept any agreement waiting there. Uploads and submissions stop while one is pending.
 2. In [Certificates, Identifiers & Profiles](https://developer.apple.com/account/resources):
    - Identifiers: register an App ID for macOS with the explicit bundle ID `dev.myrhex.hearth`. It needs no extra capability.
-   - Certificates: create an **Apple Distribution** certificate and a **Mac Installer Distribution** certificate, and install both in the login keychain. Xcode can create them in Settings, Accounts, Manage Certificates.
-   - Profiles: create a **Mac App Store Connect** distribution profile for `dev.myrhex.hearth` with the Apple Distribution certificate, and download it.
+   - Certificates: create an **Apple Distribution** certificate and a **Mac Installer Distribution** certificate, and install both in the login keychain. Xcode can create them in Settings, Accounts, Manage Certificates. An Apple Distribution certificate made earlier, for an iPhone app for example, works too.
+   - Profiles: create a **Mac App Store Connect** distribution profile for `dev.myrhex.hearth` with the Apple Distribution certificate that is in your keychain, name it Hearth, and download it.
 3. In App Store Connect, Apps, New App: platform macOS, the name (see the listing below), primary language English (U.S.), bundle ID `dev.myrhex.hearth`, and any SKU, for example `hearth-mac`.
 4. Note the Team ID from Membership details. It never goes into the repository: the build reads it from the environment.
 
@@ -69,11 +69,11 @@ TestFlight is the place to check both, before submitting.
 APPLE_TEAM_ID=XXXXXXXXXX MAS_PROVISIONING_PROFILE=~/Downloads/Hearth.provisionprofile npm run dist:mas
 ```
 
-This builds Hearth, fetches the engine for Apple silicon if needed, signs everything with the two certificates, and writes `release/Hearth-<version>-mas-arm64.pkg`.
+This checks that both certificates are in the keychain, builds Hearth, fetches the engine for Apple silicon if needed, signs everything with the two certificates, and writes `release/Hearth-<version>-mas-arm64.pkg`. macOS may ask to let `codesign` and `productbuild` use the certificates' keys: enter the Mac's login password and click Always Allow.
 
 Upload that package with [Transporter](https://apps.apple.com/app/transporter/id1450874784): sign in, add the package, click Deliver. Once Apple has processed it, the build shows up in App Store Connect, in TestFlight and on the version page.
 
-App Store Connect takes each build number once per version. To upload the same version again, add `MAS_BUILD_NUMBER=2`, then 3, and so on. Without it, the build number is the version.
+Each build is numbered with the time it was made, in UTC, like 2026.1027.1530. App Store Connect takes a Mac build only when its number is higher than every build uploaded before, whatever the version, so there is nothing to set by hand, even to upload the same version again.
 
 To try the store edition without the account, `APPLE_TEAM_ID=XXXXXXXXXX npm run dist:mas-local` builds a sandboxed app signed ad hoc in `release/mas-arm64/Hearth.app`.
 
