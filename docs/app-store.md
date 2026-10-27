@@ -81,7 +81,8 @@ Install the uploaded build with TestFlight, then:
 
 1. Open a folder, quit Hearth and open it again. The folder should reopen without asking. If Hearth asks for the folder again, the bookmark did not work.
 2. Download a model, ask the agent for a change, and commit it.
-3. Quit with a model in memory, and check in Activity Monitor that no `llama-server` is left.
+3. Delete a file from the file tree: it should land in the Trash. Then use Reveal in Finder on another one.
+4. Quit with a model in memory, and check in Activity Monitor that no `llama-server` is left.
 
 ## The listing
 

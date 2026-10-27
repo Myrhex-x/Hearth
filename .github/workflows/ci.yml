@@ -66,6 +66,15 @@ jobs:
           esac
           echo "Testing $HEARTH_EXE"
           if [ "$RUNNER_OS" = "Linux" ]; then xvfb-run -a npx playwright test; else npx playwright test; fi
+      # The Mac App Store edition, signed ad hoc and run in Apple's sandbox. The
+      # Team ID only names Electron's app group here, so any will do.
+      - name: Mac App Store edition in the sandbox
+        if: runner.os == 'macOS'
+        env:
+          APPLE_TEAM_ID: ABCDE12345
+        run: |
+          node scripts/build-mas.mjs --local
+          HEARTH_MAS_APP="$PWD/release/mas-arm64/Hearth.app/Contents/MacOS/Hearth" npx playwright test tests/e2e/mas.spec.ts
       - name: Upload screenshots and reports
         if: always()
         uses: actions/upload-artifact@v4
