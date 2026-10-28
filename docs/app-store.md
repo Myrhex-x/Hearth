@@ -26,7 +26,7 @@ The entitlements are in [build/entitlements.mas.plist](../build/entitlements.mas
 | --- | --- |
 | `app-sandbox` | Required for every Mac App Store app. |
 | `network.client` | Downloads models from Hugging Face, and talks to the engine and to Ollama or LM Studio. |
-| `network.server` | The built-in engine listens on 127.0.0.1, on a random port, with a key only Hearth knows. |
+| `network.server` | The built-in engine listens on 127.0.0.1, on a random port, with a key only Hearth knows, and starts one more server per loaded model, also on 127.0.0.1. llama.cpp's router gives those a TCP port, so a Unix socket cannot replace it. |
 | `files.user-selected.read-write` | Reads and writes the folders the user opens. |
 | `files.bookmarks.app-scope` | Reopens those folders after a restart without asking again. |
 | `application-groups` | Electron's App Store build names its shared resources after the team: `TEAM_ID.dev.myrhex.hearth`. |
@@ -145,9 +145,9 @@ Paste this into App Review Information, Notes. Sign-in required: no.
 > 2. Click Open a folder and choose any folder with some code in it.
 > 3. In the panel on the right, type a request such as "Explain what this project does" and press Return.
 >
-> The model engine is llama.cpp's server (MIT license). It ships inside the app bundle, is signed with it and runs inside the sandbox. It accepts connections only from 127.0.0.1, on a random port, with a key known only to Hearth, which is why the app uses the network server entitlement. The files Hearth downloads are model weights: data that adds no code and changes no feature of the app.
+> Why the app uses com.apple.security.network.server: the model engine is llama.cpp's server (MIT license). It ships inside the app bundle (Contents/Resources/engine/llama-server), is signed with it and runs as a child process inside the app's sandbox. When a model is first used, Hearth starts it on 127.0.0.1, on a random free port, with a key Hearth generates at each launch. For each model it loads, the engine starts one more process from the same binary, also on 127.0.0.1 on a random port. Hearth is their only client and nothing listens on any other interface. Without the entitlement, the sandbox blocks these sockets and no model can run. The engine starts only once a model is in use, not at launch: after step 3 above, "lsof -nP -iTCP -sTCP:LISTEN" lists two llama-server processes on 127.0.0.1.
 >
-> Hearth works on its own: Ollama and LM Studio are optional. Because of the sandbox, this edition has no terminal and its agent does not run commands; it reads and writes files only in folders the user opens. Source control uses the git that comes with Xcode or the Command Line Tools when the Mac has them, and says so when it does not.
+> The files Hearth downloads are model weights: data that adds no code and changes no feature of the app. Hearth works on its own: Ollama and LM Studio are optional. Because of the sandbox, this edition has no terminal and its agent does not run commands; it reads and writes files only in folders the user opens. Source control uses the git that comes with Xcode or the Command Line Tools when the Mac has them, and says so when it does not.
 
 ## Each release
 
@@ -160,5 +160,6 @@ Paste this into App Review Information, Notes. Sign-in required: no.
 - The store build is for Apple silicon only. An Intel build would need a universal app and a universal engine.
 - Hearth needs macOS 13.3 or later, like the engine. The App Store reads this from the app.
 - Source control counts on Xcode or the Command Line Tools being installed. If App Review objects to relying on them (guideline 2.4.5), the way out is to bundle git in this edition, or to use a git written in JavaScript.
+- App Review's automated check stopped 0.4.0 over `network.server`, because nothing listens until a model is in use. The answer is a reply in App Store Connect, App Review, saying how the engine uses it (the paragraph in the notes above), then a resubmission. Starting the engine at launch only to show a listener would cost memory for nothing.
 - Keep the bundle ID and the team: the sandbox container, and with it the downloaded models and folder permissions, belong to them.
 - On an individual developer account, the App Store shows the account holder's legal name as the seller. An organization account shows the organization's name.
